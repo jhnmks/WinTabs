@@ -15,10 +15,10 @@
             CornerRadius="{DynamicResource ControlCornerRadius}"
             ClipToBounds="True" PreviewMouseLeftButtonDown="OnGroupMouseDown">
         <DockPanel>
-            <Border DockPanel.Dock="Left" Width="14" Margin="0,0,8,0" Background="Transparent" Cursor="SizeAll"
+            <Border DockPanel.Dock="Left" Padding="6,0,8,0" Background="Transparent" Cursor="SizeAll"
                     AutomationProperties.Name="Move tab group" ToolTip="Drag to move this group. Drop on another tab bar to swap groups.">
-                <Ellipse Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Center"
-                         Stroke="{DynamicResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" IsHitTestVisible="False">
+                <Ellipse Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Stroke="{DynamicResource TextFillColorSecondaryBrush}" StrokeThickness="1.25" IsHitTestVisible="False">
                     <Ellipse.Style>
                         <Style TargetType="Ellipse">
                             <Style.Triggers>

@@ -73,20 +73,20 @@
                 </StackPanel>
             </Button.ToolTip>
 
-            <Grid>
+            <!-- Layout: [6 inset][text][6 gap][X slot][6 inset]. Equal insets centre the text + X group. -->
+            <Grid Margin="6,0" VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Border Width="{Binding Overlay.IconSize}" Margin="0,0,4,0" />
-                <TextBlock Grid.Column="1" Text="{Binding AppName}" FontSize="{Binding Overlay.FontSize}"
-                           TextAlignment="Center" VerticalAlignment="Center" />
-                <Border Grid.Column="2" Width="{Binding Overlay.IconSize}" Margin="4,0,0,0" />
+                <TextBlock Margin="0,0,6,0" Text="{Binding AppName}" FontSize="{Binding Overlay.FontSize}"
+                           VerticalAlignment="Center" />
+                <Border Grid.Column="1" Width="{Binding Overlay.IconSize}" />
             </Grid>
         </Button>
-        <Button HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                Width="{Binding Overlay.IconSize}" Padding="0" Focusable="False"
+        <!-- Sits outside the tab button so inactive-tab fading never dims it; aligned to the X slot above. -->
+        <Button HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0"
+                Width="{Binding Overlay.IconSize}" Height="{Binding Overlay.IconSize}" Focusable="False"
                 ToolTip="Close" AutomationProperties.Name="Close"
                 Command="{Binding CloseCommand}" CommandParameter="{Binding}">
             <Button.Style>
@@ -95,10 +95,10 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="Button">
-                                <Border Background="#C42B1C" CornerRadius="2">
-                                    <Viewbox Margin="3" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <Path Data="M 0,0 L 8,8 M 8,0 L 0,8" Stroke="White" StrokeThickness="1.5" />
-                                    </Viewbox>
+                                <Border Background="#C42B1C" CornerRadius="3">
+                                    <Path Data="M 0,0 L 6,6 M 6,0 L 0,6" Stroke="White" StrokeThickness="1.25"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </ControlTemplate>
                         </Setter.Value>
