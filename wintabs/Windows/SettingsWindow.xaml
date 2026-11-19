@@ -46,11 +46,11 @@
                                 </StackPanel>
                             </viewmodels:PageItem.Header>
                         </viewmodels:PageItem>
-                        <viewmodels:PageItem Page="{x:Type pages:KeybindingsPage}">
+                        <viewmodels:PageItem Page="{x:Type pages:ShortcutsPage}">
                             <viewmodels:PageItem.Header>
                                 <StackPanel Orientation="Horizontal" Margin="0,8">
-                                    <TextBlock FontSize="16" FontFamily="Segoe MDL2 Assets" Text="&#xF210;" />
-                                    <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="Keybindings" />
+                                    <TextBlock FontSize="16" FontFamily="Segoe MDL2 Assets" Text="&#xE765;" />
+                                    <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="Shortcuts" />
                                 </StackPanel>
                             </viewmodels:PageItem.Header>
                         </viewmodels:PageItem>
@@ -59,6 +59,14 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,8">
                                     <TextBlock FontSize="16" FontFamily="Segoe MDL2 Assets" Text="&#xE82D;" />
                                     <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="Rules" />
+                                </StackPanel>
+                            </viewmodels:PageItem.Header>
+                        </viewmodels:PageItem>
+                        <viewmodels:PageItem Page="{x:Type pages:AboutPage}">
+                            <viewmodels:PageItem.Header>
+                                <StackPanel Orientation="Horizontal" Margin="0,8">
+                                    <TextBlock FontSize="16" FontFamily="Segoe MDL2 Assets" Text="&#xE946;" />
+                                    <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="About" />
                                 </StackPanel>
                             </viewmodels:PageItem.Header>
                         </viewmodels:PageItem>

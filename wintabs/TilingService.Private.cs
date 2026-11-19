@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -661,6 +661,46 @@ namespace wintabs
                 return Active && !m_workspacePaused && m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop)?.Root?.Children.Count == 0;
         }
 
+        /// <summary>
+        /// Points the backend focus at the real foreground window, so keyboard actions target the tab the user sees.
+        /// Call with the backend lock held.
+        /// </summary>
+        private void SyncFocusToForeground()
+        {
+            if (m_workspace.FocusedWindow is IWindow foreground && m_backend.HasWindow(foreground))
+                m_backend.SetFocus(foreground);
+        }
+
+        internal bool HasGroup(int groupNumber)
+        {
+            using (m_backendLock.EnterScope())
+                return m_backend.FindGroup(m_workspace.VirtualDesktopManager.CurrentDesktop, groupNumber) != null;
+        }
+
+        internal bool TransferFocusedTabTo(TilingService destination, int groupNumber)
+        {
+            if (!Active || m_workspacePaused || !destination.Active || destination.m_workspacePaused)
+                return false;
+
+            WindowNode? moved;
+            var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+            using (m_backendLock.EnterScope())
+            using (destination.m_backendLock.EnterScope())
+            {
+                SyncFocusToForeground();
+                if (destination.m_backend.FindGroup(desktop, groupNumber) is not StackPanelNode target)
+                    return false;
+                moved = m_backend.TransferFocusedTab(desktop, destination.m_backend, target);
+            }
+            if (moved == null)
+                return false;
+
+            InvalidateLayout();
+            destination.InvalidateLayout();
+            destination.OnTilingNodeFocusRequested(this, moved);
+            return true;
+        }
+
         internal bool TransferGroupTo(StackPanelNode group, TilingService destination)
         {
             if (!Active || m_workspacePaused || !destination.Active || destination.m_workspacePaused)
@@ -1113,7 +1153,7 @@ namespace wintabs
             return false;
         }
 
-        private bool CanManage(IWindow x, bool ignoreFloating = false)
+        private bool CanManage(IWindow x)
         {
             bool IsOnCurrentDisplay()
             {
@@ -1154,7 +1194,7 @@ namespace wintabs
             }
 
             // Set lookup
-            if (!ignoreFloating && IsFloating())
+            if (IsFloating())
             {
                 return false;
             }
@@ -1283,23 +1323,6 @@ namespace wintabs
                 }
             }
             UpdateGuiNodeOptions();
-        }
-
-
-        bool HasFocusAndAdjacentWindow(TilingDirection direction)
-        {
-            try
-            {
-                using (m_backendLock.EnterScope())
-                {
-                    m_backend.GetFocusAndAdjacentWindow(m_workspace.VirtualDesktopManager.CurrentDesktop, direction);
-                    return true;
-                }
-            }
-            catch (TilingFailedException e) when (e.FailReason == TilingError.MissingTarget || e.FailReason == TilingError.MissingAdjacentWindow)
-            {
-                return false;
-            }
         }
     }
 }

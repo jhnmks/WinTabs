@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Threading;
 
@@ -265,72 +265,75 @@ namespace wintabs
 
         public bool CanMoveFocus(TilingDirection direction)
         {
-            return HasFocusAndAdjacentWindow(direction);
+            using (m_backendLock.EnterScope())
+            {
+                return m_backend.GetAdjacentGroupTab(m_workspace.VirtualDesktopManager.CurrentDesktop, direction) != null;
+            }
         }
 
         public void MoveFocus(TilingDirection direction)
         {
             using (m_backendLock.EnterScope())
             {
-                var adjacentWindow = m_backend.GetFocusAdjacentWindow(m_workspace.VirtualDesktopManager.CurrentDesktop, direction);
-                if (FocusHelper.ForceActivate(adjacentWindow.WindowReference.Handle))
+                var tab = m_backend.GetAdjacentGroupTab(m_workspace.VirtualDesktopManager.CurrentDesktop, direction)
+                    ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
+                if (FocusHelper.ForceActivate(tab.WindowReference.Handle))
                 {
-                    m_backend.SetFocus(adjacentWindow);
+                    m_backend.SetFocus(tab);
                 }
             }
 
             InvalidateLayout();
         }
 
-        public bool CanMoveWindow(TilingDirection direction)
-        {
-            return HasFocusAndAdjacentWindow(direction);
-        }
-
-        public void MoveWindow(TilingDirection direction)
+        public void CycleTab(int offset)
         {
             using (m_backendLock.EnterScope())
             {
-                var focusedNode = m_backend.GetFocus(m_workspace.VirtualDesktopManager.CurrentDesktop) ?? throw new TilingFailedException(TilingError.MissingTarget);
-                WindowNode? adjacentWindow = focusedNode.GetAdjacentWindow(direction) ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
-                var adjancentWindowIndex = adjacentWindow.Parent!.IndexOf(adjacentWindow);
-
-                if (adjacentWindow.Parent == focusedNode.Parent)
+                var tab = m_backend.GetCycledTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset)
+                    ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
+                if (FocusHelper.ForceActivate(tab.WindowReference.Handle))
                 {
-                    var focusedNodeIndex = focusedNode.Parent.IndexOf(focusedNode);
-                    var adjacentNodeIndex = focusedNode.Parent.IndexOf(adjacentWindow);
-                    focusedNode.Parent.Move(focusedNodeIndex, adjacentNodeIndex);
-                }
-                else
-                {
-
-                    if (direction == TilingDirection.Left || direction == TilingDirection.Up)
-                    {
-                        m_backend.MoveAfter(focusedNode, adjacentWindow);
-                    }
-                    else
-                    {
-                        m_backend.MoveBefore(focusedNode, adjacentWindow);
-                    }
+                    m_backend.SetFocus(tab);
                 }
             }
 
             InvalidateLayout();
         }
 
-        public bool CanSwapFocus(TilingDirection direction)
+        public void TileTab(TilingDirection direction)
         {
-            return HasFocusAndAdjacentWindow(direction);
+            WindowNode? tab;
+            using (m_backendLock.EnterScope())
+            {
+                tab = m_backend.GetFocus(m_workspace.VirtualDesktopManager.CurrentDesktop) as WindowNode
+                    ?? throw new TilingFailedException(TilingError.MissingTarget);
+            }
+            OnTabSplitRequested(tab, direction);
         }
 
-        public void SwapFocus(TilingDirection direction)
+        public void MoveTab(int offset)
         {
             using (m_backendLock.EnterScope())
             {
-                (var currentWindow, var adjacentWindow) = m_backend.GetFocusAndAdjacentWindow(m_workspace.VirtualDesktopManager.CurrentDesktop, direction);
-                currentWindow!.Swap(adjacentWindow);
+                if (!m_backend.MoveFocusedTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset))
+                    return;
             }
+
             InvalidateLayout();
+        }
+
+        public bool MoveTabToGroup(int groupNumber)
+        {
+            using (m_backendLock.EnterScope())
+            {
+                SyncFocusToForeground();
+                if (!m_backend.MoveFocusedTabToGroup(m_workspace.VirtualDesktopManager.CurrentDesktop, groupNumber))
+                    return false;
+            }
+
+            InvalidateLayout();
+            return true;
         }
 
         public bool DiscoverWindows()
@@ -426,12 +429,6 @@ namespace wintabs
                 OnWindowRemoved(movedWindow, new WindowChangedEventArgs(movedWindow));
                 OnWindowAdded(movedWindow, new WindowChangedEventArgs(movedWindow));
             }
-        }
-
-        public bool CanFloat()
-        {
-            var window = m_workspace.FocusedWindow;
-            return window != null && CanManage(window, ignoreFloating: true);
         }
 
         public void Float()

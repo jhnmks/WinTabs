@@ -85,9 +85,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="Controls\KeyPressBox.xaml.cs">
-      <DependentUpon>KeyPressBox.xaml</DependentUpon>
-    </Compile>
     <Compile Update="MainWindow.xaml.cs">
       <SubType>Code</SubType>
       <DependentUpon>MainWindow.xaml</DependentUpon>
@@ -110,9 +107,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Page Update="Controls\KeyPressBox.xaml">
-      <SubType>Designer</SubType>
-    </Page>
     <Page Update="MainWindow.xaml">
       <SubType>Designer</SubType>
     </Page>

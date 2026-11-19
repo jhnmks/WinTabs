@@ -3,56 +3,9 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace wintabs.Utilities
 {
-    public static class KeyCodeHelper
-    {
-        public static bool CanMapToValidModifiersAndKeyCode(IEnumerable<KeyCode> keys)
-        {
-            try
-            {
-                GetModifierAndKeyCode(keys);
-                return true;
-            }
-            catch (ArgumentException)
-            {
-                return false;
-            }
-        }
-
-        public static (IReadOnlyList<KeyCode> Modifiers, KeyCode Key) GetModifierAndKeyCode(IEnumerable<KeyCode> keys)
-        {
-            var modifiers = keys.Where(x => x switch
-            {
-                KeyCode.LeftShift => true,
-                KeyCode.RightShift => true,
-                KeyCode.LeftAlt => true,
-                KeyCode.RightAlt => true,
-                KeyCode.LeftCtrl => true,
-                KeyCode.RightCtrl => true,
-                KeyCode.LWin => true,
-                KeyCode.RWin => true,
-                _ => false,
-            }).ToArray();
-
-            if (!modifiers.Any())
-            {
-                throw new ArgumentException(nameof(keys));
-            }
-
-            var nonModifiers = keys.Where(x => !modifiers.Contains(x)).ToArray();
-            if (nonModifiers.Length != 1)
-            {
-                throw new ArgumentException(nameof(keys));
-            }
-
-            return (modifiers, nonModifiers[0]);
-        }
-    }
-
     /// <summary>
     ///  Specifies key codes and modifiers.
     /// </summary>

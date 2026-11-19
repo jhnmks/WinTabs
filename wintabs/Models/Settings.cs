@@ -21,23 +21,12 @@ namespace wintabs.Models
         bool AutoFloatNewWindows { get; }
     }
 
-    [AttributeUsage(AttributeTargets.Field)]
-    public class DefaultKeybindingAttribute(params KeyCode[] keys) : Attribute
-    {
-        public readonly KeyCode[] Keys = keys;
-    }
-
     public record class Settings : IEquatable<Settings>, ITilingServiceSettings
     {
         public Settings()
         {
 
         }
-
-        [JsonConverter(typeof(Converters.ActivationHotkeyConverter))]
-        public ActivationHotkey ActivationHotkey { get; init; } = ActivationHotkey.Default;
-
-        public bool ActivateOnCapsLock { get; init; } = false;
 
 
         public bool NotifyVirtualDesktopServiceIncompatibility { get; init; } = true;
@@ -59,9 +48,6 @@ namespace wintabs.Models
 
         public AppearanceMode Appearance { get; init; } = AppearanceMode.System;
 
-        [JsonConverter(typeof(Converters.KeybindingConverter))]
-        public KeybindingDictionary Keybindings { get; init; } = [];
-
         public List<string> ProcessIgnoreList { get; init; } =
         [
             "Taskmgr"
@@ -72,8 +58,6 @@ namespace wintabs.Models
             "OperationStatusWindow",
             "RAIL_WINDOW",
         ];
-
-        public bool ShowContextHints { get; init; } = true;
 
         public bool MultiMonitorSupport { get; init; } = true;
 

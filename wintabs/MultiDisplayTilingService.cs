@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reactive;
@@ -327,11 +327,6 @@ namespace wintabs
             }
         }
 
-        public void SwapFocus(TilingDirection direction)
-        {
-            GetActiveTilingService().SwapFocus(direction);
-        }
-
         public void SetWorkspacePaused(bool paused)
         {
             if (m_workspacePaused == paused)
@@ -369,11 +364,6 @@ namespace wintabs
             }
         }
 
-        public bool CanFloat()
-        {
-            return GetActiveTilingService().CanFloat();
-        }
-
         public bool CanMoveFocus(TilingDirection direction)
         {
             if (GetActiveTilingService().CanMoveFocus(direction))
@@ -399,19 +389,33 @@ namespace wintabs
             return closest.FindClosest(focusedWindow.Position.Center) != null;
         }
 
-        public bool CanSwapFocus(TilingDirection direction)
+        public void CycleTab(int offset)
         {
-            return GetActiveTilingService().CanSwapFocus(direction);
+            GetActiveTilingService().CycleTab(offset);
         }
 
-        public bool CanMoveWindow(TilingDirection direction)
+        public bool MoveTabToGroup(int groupNumber)
         {
-            return GetActiveTilingService().CanMoveWindow(direction);
+            var source = GetActiveTilingService();
+            if (source.HasGroup(groupNumber))
+                return source.MoveTabToGroup(groupNumber);
+
+            TilingService? destination;
+            lock (m_syncRoot)
+            {
+                destination = m_tilingServices.Values.FirstOrDefault(x => x != source && x.HasGroup(groupNumber));
+            }
+            return destination != null && source.TransferFocusedTabTo(destination, groupNumber);
         }
 
-        public void MoveWindow(TilingDirection direction)
+        public void TileTab(TilingDirection direction)
         {
-            GetActiveTilingService().MoveWindow(direction);
+            GetActiveTilingService().TileTab(direction);
+        }
+
+        public void MoveTab(int offset)
+        {
+            GetActiveTilingService().MoveTab(offset);
         }
 
         public Task ToggleDesktopAsync() => GetActiveTilingService().ToggleDesktopAsync();

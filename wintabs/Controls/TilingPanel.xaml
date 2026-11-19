@@ -15,20 +15,16 @@
             CornerRadius="{DynamicResource ControlCornerRadius}"
             ClipToBounds="True" PreviewMouseLeftButtonDown="OnGroupMouseDown">
         <DockPanel>
-            <Border DockPanel.Dock="Left" Padding="6,0,8,0" Background="Transparent" Cursor="SizeAll"
+            <Border DockPanel.Dock="Left" Padding="6,0,8,0" Background="Transparent"
                     AutomationProperties.Name="Move tab group" ToolTip="Drag to move this group. Drop on another tab bar to swap groups.">
-                <Ellipse Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center"
-                         Stroke="{DynamicResource TextFillColorSecondaryBrush}" StrokeThickness="1.25" IsHitTestVisible="False">
-                    <Ellipse.Style>
-                        <Style TargetType="Ellipse">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding HasFocus}" Value="True">
-                                    <Setter Property="Fill" Value="{Binding Overlay.FocusBorderBrush}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Ellipse.Style>
-                </Ellipse>
+                <!-- Numbered badge: identifies the group and doubles as its drag handle. -->
+                <Border MinWidth="{Binding Overlay.IconSize}" Height="{Binding Overlay.IconSize}" Padding="3,0"
+                        CornerRadius="8" Background="#C42B1C" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsHitTestVisible="False">
+                    <TextBlock Text="{Binding GroupNumber}" Foreground="White" FontWeight="SemiBold"
+                               FontSize="{Binding Overlay.FontSize}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextAlignment="Center" />
+                </Border>
             </Border>
             <local:TabBar ItemsSource="{Binding Path=ChildNodes}" />
         </DockPanel>

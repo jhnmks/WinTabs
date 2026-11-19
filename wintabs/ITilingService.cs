@@ -30,15 +30,14 @@ namespace wintabs
         bool DiscoverWindows();
         void Refresh();
         void SetWorkspacePaused(bool paused);
-        bool CanFloat();
         void Float();
         Task ToggleDesktopAsync();
         bool CanMoveFocus(TilingDirection direction);
         void MoveFocus(TilingDirection direction);
-        bool CanSwapFocus(TilingDirection direction);
-        void SwapFocus(TilingDirection direction);
-        bool CanMoveWindow(TilingDirection direction);
-        void MoveWindow(TilingDirection direction);
+        void CycleTab(int offset);
+        void MoveTab(int offset);
+        void TileTab(TilingDirection direction);
+        bool MoveTabToGroup(int groupNumber);
 
         void Stop();
         void Start();

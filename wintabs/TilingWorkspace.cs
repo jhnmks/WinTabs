@@ -356,6 +356,50 @@ namespace wintabs
             return true;
         }
 
+        /// <summary>
+        /// Moves the focused tab to the end of the group labelled <paramref name="groupNumber"/> on the same desktop.
+        /// </summary>
+        public bool MoveFocusedTabToGroup(IVirtualDesktop currentDesktop, int groupNumber)
+        {
+            if (GetFocus(currentDesktop) is not WindowNode { Parent: StackPanelNode source } tab || source.Desktop?.Root is not PanelNode root)
+                return false;
+
+            var target = root.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => group.GroupNumber == groupNumber);
+            if (target == null)
+                return false;
+
+            if (target == source)
+            {
+                int index = source.IndexOf(tab);
+                if (index == source.Children.Count - 1)
+                    return false;
+                source.Move(index, source.Children.Count - 1);
+                return true;
+            }
+
+            return MoveTabToGroup(tab, target);
+        }
+
+        public StackPanelNode? FindGroup(IVirtualDesktop desktop, int groupNumber) =>
+            GetTree(desktop)?.Root?.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => group.GroupNumber == groupNumber);
+
+        /// <summary>
+        /// Moves the focused tab to the end of a group owned by another workspace (another display).
+        /// </summary>
+        public WindowNode? TransferFocusedTab(IVirtualDesktop desktop, TilingWorkspace destination, StackPanelNode target)
+        {
+            if (GetFocus(desktop) is not WindowNode { Parent: StackPanelNode source } tab || target.Desktop != destination.GetTree(desktop))
+                return null;
+
+            var window = tab.WindowReference;
+            var original = m_originalPositions.GetValueOrDefault(window, window.Position);
+            UnregisterWindow(window);
+            var moved = destination.RegisterWindow(window, target);
+            destination.m_originalPositions[window] = original;
+            destination.SetFocus(moved);
+            return moved;
+        }
+
         public bool TransferTabGroup(StackPanelNode group, TilingWorkspace destination, IVirtualDesktop desktop)
         {
             var source = m_states.GetState(desktop);
@@ -881,19 +925,72 @@ namespace wintabs
             return state.FocusedNode;
         }
 
-        public WindowNode GetFocusAdjacentWindow(IVirtualDesktop currentDesktop, TilingDirection direction)
+        /// <summary>
+        /// The selected tab of the nearest tab group in <paramref name="direction"/> from the focused group,
+        /// judged by on-screen position.
+        /// </summary>
+        public WindowNode? GetAdjacentGroupTab(IVirtualDesktop currentDesktop, TilingDirection direction)
         {
-            var focusedNode = GetFocus(currentDesktop) ?? throw new TilingFailedException(TilingError.MissingTarget);
-            WindowNode? adjacentWindow = focusedNode.GetAdjacentWindow(direction) ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
-            return adjacentWindow;
+            if (GetFocus(currentDesktop) is not { Parent: StackPanelNode source } || source.Desktop?.Root is not PanelNode root)
+                return null;
+
+            var from = GetGroupBounds(source).Center;
+            return root.Nodes.OfType<StackPanelNode>()
+                .Where(group => group != source && group.SelectedTab != null)
+                .Select(group => (Group: group, Center: GetGroupBounds(group).Center))
+                .Where(x => direction switch
+                {
+                    TilingDirection.Left => x.Center.X < from.X,
+                    TilingDirection.Right => x.Center.X > from.X,
+                    TilingDirection.Up => x.Center.Y < from.Y,
+                    _ => x.Center.Y > from.Y,
+                })
+                .OrderBy(x =>
+                {
+                    long along = direction is TilingDirection.Left or TilingDirection.Right
+                        ? Math.Abs(x.Center.X - from.X) : Math.Abs(x.Center.Y - from.Y);
+                    long across = direction is TilingDirection.Left or TilingDirection.Right
+                        ? Math.Abs(x.Center.Y - from.Y) : Math.Abs(x.Center.X - from.X);
+                    // Prefer groups that line up with the current one over diagonal neighbours.
+                    return along + 2 * across;
+                })
+                .Select(x => x.Group.SelectedTab)
+                .FirstOrDefault();
         }
 
-        public (TilingNode, WindowNode) GetFocusAndAdjacentWindow(IVirtualDesktop currentDesktop, TilingDirection direction)
+        /// <summary>
+        /// The tab <paramref name="offset"/> positions away from the focused tab, wrapping around its group.
+        /// </summary>
+        public WindowNode? GetCycledTab(IVirtualDesktop currentDesktop, int offset)
         {
-            var focusedNode = GetFocus(currentDesktop) ?? throw new TilingFailedException(TilingError.MissingTarget);
-            WindowNode? adjacentWindow = focusedNode.GetAdjacentWindow(direction) ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
-            return (focusedNode, adjacentWindow);
+            if (GetFocus(currentDesktop) is not WindowNode { Parent: StackPanelNode group } focused)
+                return null;
+
+            var tabs = group.Children.OfType<WindowNode>().ToList();
+            if (tabs.Count < 2)
+                return null;
+
+            int index = tabs.IndexOf(focused);
+            return tabs[((index + offset) % tabs.Count + tabs.Count) % tabs.Count];
         }
+
+        /// <summary>
+        /// Moves the focused tab one position within its group. Stops at the first and last positions.
+        /// </summary>
+        public bool MoveFocusedTab(IVirtualDesktop currentDesktop, int offset)
+        {
+            if (GetFocus(currentDesktop) is not WindowNode { Parent: StackPanelNode group } focused)
+                return false;
+
+            int from = group.IndexOf(focused);
+            int to = from + offset;
+            if (to < 0 || to >= group.Children.Count)
+                return false;
+
+            group.Move(from, to);
+            return true;
+        }
+
 
         public void SetFocus(TilingNode node)
         {

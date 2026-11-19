@@ -338,6 +338,7 @@ namespace wintabs
             vm.Node = node;
             vm.HasFocus = focusedPath.Contains(node);
             vm.ChildHasDirectFocus = node.Children.Contains(focusedPath.FirstOrDefault());
+            vm.GroupNumber = node is StackPanelNode group ? group.GroupNumber : 0;
             vm.ComputedBounds = AdjustForDisplay(node.ComputedRectangle);
             vm.PrimaryActionCommand = m_panelItemPrimaryActionCommand;
             vm.CloseCommand = m_panelItemCloseActionCommand;

@@ -12,8 +12,18 @@ namespace wintabs.Layouts.Tiling
 
         public override IReadOnlyList<TilingNode> Children => m_children;
 
+
         private List<TilingNode> m_children = [];
         private WindowNode? m_selectedTab;
+
+        /// <summary>
+        /// Label shown on the group's badge: the lowest number not used by another group with tabs.
+        /// Groups without tabs have no number (0).
+        /// </summary>
+        public int GroupNumber => m_cloneNumber ?? GroupNumbers.Get(this);
+
+        // Clones (used for layout previews) show the original's number without claiming one.
+        private int? m_cloneNumber;
 
         public WindowNode? SelectedTab => m_selectedTab?.Parent == this ? m_selectedTab : m_children.OfType<WindowNode>().FirstOrDefault();
 
@@ -68,6 +78,7 @@ namespace wintabs.Layouts.Tiling
         public override object Clone()
         {
             var copy = (StackPanelNode)base.Clone();
+            copy.m_cloneNumber = GroupNumber;
             copy.m_children = m_children.Select(x => (TilingNode)x.Clone()).ToList();
             copy.m_selectedTab = m_selectedTab != null ? copy.m_children.OfType<WindowNode>()
                 .FirstOrDefault(tab => tab.GenerationID == m_selectedTab.GenerationID) : null;

@@ -63,28 +63,22 @@ namespace wintabs
 WinTabs - Tabbed Window Manager
 =======================================
 
-USAGE: wintabs.exe [OPTIONS] [ACTION]
+USAGE: wintabs.exe [OPTIONS]
 
 OPTIONS:
     -h, --help                Show this help
     -v, -vv, -vvv             Verbose logging (repeat for more)
     --version                 Show version info
-    --action NAME             Execute specific action directly
 
-EXAMPLES:
-    wintabs --action ToggleFloatingMode
-
-ACTIONS:
-{GenerateActionsHelp()}
+SHORTCUTS:
+    Ctrl + Win + Arrow        Focus the neighbouring tab group
+    Ctrl + Arrow              Switch to the previous / next tab
+    Ctrl + Shift + Arrow      Move the tab one position
+    Ctrl + Shift + 1-9        Move the tab to the end of that numbered group
+    Win + Shift + Arrow       Tile the tab beside its group
 
 Type 'wintabs --help' from anywhere after installation.
 ");
-                return 0;
-            }
-
-            if (args.Contains("--action"))
-            {
-                SendMessage(args[Array.IndexOf(args, "--action") + 1]);
                 return 0;
             }
 
@@ -310,23 +304,5 @@ Type 'wintabs --help' from anywhere after installation.
             Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
             ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()
             ?? "0.0.0";
-
-        private static void SendMessage(string message)
-        {
-            var hwnd = PInvoke.FindWindow(null, "wintabsMainWindow").Value;
-            if (hwnd == IntPtr.Zero)
-            {
-                throw new InvalidOperationException("WinTabs is not running!");
-            }
-            WindowCopyDataHelper.Send(hwnd, Encoding.Default.GetBytes(message));
-        }
-
-        private static string GenerateActionsHelp()
-        {
-            return string.Join('\n', Enum.GetValues<Models.BindableAction>().Select(action =>
-            {
-                return $"    {action,-25} {action.GetDescription()}";
-            }));
-        }
     }
 }

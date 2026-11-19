@@ -77,7 +77,6 @@ namespace wintabs.Tests
             Assert.AreSame(root, second.Parent);
             Assert.AreEqual(new Rectangle(0, 24, 1920, 1080), first.ComputedRectangle);
             Assert.AreEqual(first.ComputedRectangle, second.ComputedRectangle);
-            Assert.AreSame(second, first.GetAdjacentWindow(TilingDirection.Right));
 
             tree.WorkArea = new Rectangle(1920, 40, 3200, 1064);
             tree.Arrange();
@@ -332,95 +331,126 @@ namespace wintabs.Tests
         }
 
         [TestMethod]
-        public void TestGetFocusAdjacentWindowNoFocus()
+        public void CtrlWinArrowFocusesTheNeighbouringGroup()
         {
-            var workspace = new TilingWorkspace();
+            var workspace = new TilingWorkspace(tabsOnly: true);
             var desktop = m_desktopFactory.CreateVirtualDesktop();
             workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            var explorer = m_windowFactory.CreateExplorerWindow();
-            var node = workspace.RegisterWindow(explorer);
+            var tree = workspace.GetTree(desktop)!;
+            var left = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var right = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            tree.Arrange();
+            Assert.IsTrue(workspace.SplitTab(right, TilingDirection.Right));
+            tree.Measure();
+            tree.Arrange();
 
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Left));
-            });
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Up));
-            });
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Right));
-            });
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Down));
-            });
+            workspace.SetFocus(left);
+            Assert.IsNull(workspace.GetAdjacentGroupTab(desktop, TilingDirection.Left));
+            Assert.AreSame(right, workspace.GetAdjacentGroupTab(desktop, TilingDirection.Right));
+            Assert.IsNull(workspace.GetAdjacentGroupTab(desktop, TilingDirection.Up));
+
+            workspace.SetFocus(right);
+            Assert.AreSame(left, workspace.GetAdjacentGroupTab(desktop, TilingDirection.Left));
         }
 
         [TestMethod]
-        public void TestGetFocusAdjacentWindowNoAdjacent()
+        public void CtrlArrowCyclesTabsAndWraps()
         {
-            var workspace = new TilingWorkspace();
+            var workspace = new TilingWorkspace(tabsOnly: true);
             var desktop = m_desktopFactory.CreateVirtualDesktop();
             workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            var explorer = m_windowFactory.CreateExplorerWindow();
-            var node = workspace.RegisterWindow(explorer);
+            var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var third = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
 
-            workspace.SetFocus(node);
+            workspace.SetFocus(second);
+            Assert.AreSame(third, workspace.GetCycledTab(desktop, 1));
+            Assert.AreSame(first, workspace.GetCycledTab(desktop, -1));
 
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Left));
-            });
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Up));
-            });
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Right));
-            });
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Down));
-            });
+            workspace.SetFocus(third);
+            Assert.AreSame(first, workspace.GetCycledTab(desktop, 1));
         }
 
         [TestMethod]
-        public void TestGetFocusAdjacentWindowFlat()
+        public void CtrlShiftArrowMovesTheTabOnePositionAndStopsAtTheEnds()
         {
-            var workspace = new TilingWorkspace();
+            var workspace = new TilingWorkspace(tabsOnly: true);
             var desktop = m_desktopFactory.CreateVirtualDesktop();
             workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var group = (StackPanelNode)first.Parent!;
 
-            var explorer1 = m_windowFactory.CreateExplorerWindow();
-            var node1 = workspace.RegisterWindow(explorer1);
+            workspace.SetFocus(first);
+            Assert.IsFalse(workspace.MoveFocusedTab(desktop, -1));
+            Assert.IsTrue(workspace.MoveFocusedTab(desktop, 1));
+            Assert.AreSame(second, group.Children[0]);
+            Assert.AreSame(first, group.Children[1]);
+            Assert.IsFalse(workspace.MoveFocusedTab(desktop, 1));
+        }
 
-            var explorer2 = m_windowFactory.CreateExplorerWindow();
-            var node2 = workspace.RegisterWindow(explorer2);
+        [TestMethod]
+        public void CtrlShiftNumberMovesTheTabToTheEndOfThatGroup()
+        {
+            var workspace = new TilingWorkspace(tabsOnly: true);
+            var desktop = m_desktopFactory.CreateVirtualDesktop();
+            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var tree = workspace.GetTree(desktop)!;
+            var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var c = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            tree.Arrange();
+            var first = (StackPanelNode)a.Parent!;
+            Assert.IsTrue(workspace.SplitTab(c, TilingDirection.Right));
+            var second = (StackPanelNode)c.Parent!;
 
-            var explorer3 = m_windowFactory.CreateExplorerWindow();
-            var node3 = workspace.RegisterWindow(explorer3);
+            // Into another group: lands last there.
+            workspace.SetFocus(a);
+            Assert.IsTrue(workspace.MoveFocusedTabToGroup(desktop, second.GroupNumber));
+            Assert.AreSame(second, a.Parent);
+            Assert.AreSame(a, second.Children[^1]);
 
-            var explorer4 = m_windowFactory.CreateExplorerWindow();
-            var node4 = workspace.RegisterWindow(explorer4);
+            // Within its own group: jumps to the end.
+            workspace.SetFocus(c);
+            Assert.IsTrue(workspace.MoveFocusedTabToGroup(desktop, second.GroupNumber));
+            Assert.AreSame(c, second.Children[^1]);
+            Assert.IsFalse(workspace.MoveFocusedTabToGroup(desktop, second.GroupNumber));
 
-            var explorer5 = m_windowFactory.CreateExplorerWindow();
-            var node5 = workspace.RegisterWindow(explorer5);
+            // Unknown number: nothing happens.
+            Assert.IsFalse(workspace.MoveFocusedTabToGroup(desktop, int.MaxValue));
+            Assert.AreSame(first, b.Parent);
+        }
 
-            workspace.SetFocus(node3);
+        [TestMethod]
+        public void GroupsAreNumberedFromOneAndReuseFreedNumbers()
+        {
+            GroupNumbers.Reset();
+            var workspace = new TilingWorkspace(tabsOnly: true);
+            var desktop = m_desktopFactory.CreateVirtualDesktop();
+            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var tree = workspace.GetTree(desktop)!;
 
-            Assert.AreEqual(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Left), node2);
-            Assert.AreEqual(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Right), node4);
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Up));
-            });
-            Assert.ThrowsException<TilingFailedException>(() =>
-            {
-                Assert.IsNull(workspace.GetFocusAdjacentWindow(desktop, TilingDirection.Down));
-            });
+            // Empty groups (one per display and desktop) never take a number.
+            Assert.AreEqual(0, ((StackPanelNode)tree.Root!).GroupNumber);
+
+            var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var third = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            tree.Arrange();
+            var original = (StackPanelNode)first.Parent!;
+            Assert.AreEqual(1, original.GroupNumber);
+
+            Assert.IsTrue(workspace.SplitTab(second, TilingDirection.Right));
+            var split = (StackPanelNode)second.Parent!;
+            Assert.AreEqual(2, split.GroupNumber);
+
+            // Closing the second group frees 2 for the next split.
+            workspace.UnregisterWindow(second.WindowReference);
+            tree.Measure();
+            tree.Arrange();
+            Assert.IsTrue(workspace.SplitTab(third, TilingDirection.Right));
+            Assert.AreEqual(2, ((StackPanelNode)third.Parent!).GroupNumber);
+            Assert.AreEqual(1, original.GroupNumber);
         }
 
         [TestMethod]

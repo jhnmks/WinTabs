@@ -92,17 +92,5 @@
                 <TextBlock VerticalAlignment="Center" Text="Window gap" />
             </DockPanel>
         </Border>
-
-        <TextBlock Text="Command pop-up" Style="{StaticResource SettingsSectionStyle}" />
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <DockPanel>
-                <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsCheckBoxStyle}" IsChecked="{Binding ShowContextHints, Mode=TwoWay}"
-                          AutomationProperties.Name="Show keyboard hints" />
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Show keyboard hints" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Text="Lists the available shortcuts after one second of inactivity. Press Esc to close the pop-up." />
-                </StackPanel>
-            </DockPanel>
-        </Border>
     </wtc:SpacedStackPanel>
 </UserControl>
