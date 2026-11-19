@@ -1,0 +1,43 @@
+﻿<UserControl x:Class="wintabs.Controls.StringsListBox"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wtc="clr-namespace:wintabs.Controls"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:wintabs.Controls" xmlns:viewmodels="clr-namespace:wintabs.ViewModels" 
+             d:DataContext="{d:DesignInstance Type=local:StringsListBox}"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <UserControl.Resources>
+        <DataTemplate x:Key="ItemTemplate">
+            <Grid Margin="0, 4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding Text, Mode=OneTime}" LostFocus="TextBox_LostFocus" />
+                <Button Grid.Column="1" Background="Transparent" Click="Button_Click">
+                    <TextBlock VerticalAlignment="Center" FontSize="15" FontFamily="Segoe MDL2 Assets" Text="&#xE74D;" />
+                </Button>
+            </Grid>
+        </DataTemplate></UserControl.Resources>
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Top">
+            <wtc:SpacedStackPanel Spacing="10" Orientation="Horizontal">
+                <Button HorizontalAlignment="Stretch" Click="OnAddClick">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock VerticalAlignment="Center" FontSize="15" FontFamily="Segoe MDL2 Assets" Text="&#xE710;" />
+                        <TextBlock Margin="10,0,0,0" Text="Add new" />
+                    </StackPanel>
+                </Button>
+                <Button HorizontalAlignment="Stretch" Click="OnClearAllClick">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock VerticalAlignment="Center" FontSize="15" FontFamily="Segoe MDL2 Assets" Text="&#xE894;" />
+                        <TextBlock Margin="10,0,0,0" Text="Clear all" />
+                    </StackPanel>
+                </Button>
+            </wtc:SpacedStackPanel>
+        </Border>
+        <StackPanel Margin="0,4,0,-4" x:Name="ItemsBox" />
+    </DockPanel>
+</UserControl>

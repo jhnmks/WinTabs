@@ -1,0 +1,73 @@
+﻿<UserControl x:Class="wintabs.Pages.Settings.GeneralPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wtc="clr-namespace:wintabs.Controls"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:viewmodels="clr-namespace:wintabs.ViewModels"
+    d:DataContext="{d:DesignInstance Type=viewmodels:SettingsViewModel}"
+    mc:Ignorable="d"
+    d:DesignHeight="900" d:DesignWidth="800">
+    <wtc:SpacedStackPanel MaxWidth="1000" Margin="{StaticResource SettingsPageMargin}" Spacing="4">
+        <TextBlock Text="General" Style="{StaticResource SettingsPageTitleStyle}" />
+
+        <TextBlock Text="Startup" Style="{StaticResource SettingsSectionStyle}" />
+        <Border Style="{StaticResource SettingsItemStyle}">
+            <DockPanel>
+                <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsCheckBoxStyle}" IsChecked="{Binding RunsAtStartup, Mode=TwoWay}"
+                          AutomationProperties.Name="Start with Windows" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Start with Windows" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="Launch WinTabs automatically when you sign in." />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <TextBlock Text="Displays" Style="{StaticResource SettingsSectionStyle}" />
+        <Border Style="{StaticResource SettingsItemStyle}">
+            <DockPanel>
+                <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsCheckBoxStyle}" IsChecked="{Binding MultiMonitorSupport, Mode=TwoWay}"
+                          AutomationProperties.Name="Use tabs on all displays" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Use tabs on all displays" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="Restart WinTabs to apply this change." />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <TextBlock Text="Notifications" Style="{StaticResource SettingsSectionStyle}" />
+        <Border Style="{StaticResource SettingsItemStyle}">
+            <DockPanel>
+                <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsCheckBoxStyle}" IsChecked="{Binding SoundOnFailure, Mode=TwoWay}"
+                          AutomationProperties.Name="Play a sound when an action fails" />
+                <TextBlock VerticalAlignment="Center" Text="Play a sound when an action fails" />
+            </DockPanel>
+        </Border>
+        <Border Style="{StaticResource SettingsItemStyle}">
+            <DockPanel>
+                <CheckBox DockPanel.Dock="Right" Style="{StaticResource SettingsCheckBoxStyle}" IsChecked="{Binding NotifyVirtualDesktopServiceIncompatibility, Mode=TwoWay}"
+                          AutomationProperties.Name="Warn when virtual desktops are unavailable" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Warn when virtual desktops are unavailable" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Text="WinTabs relies on an undocumented Windows service for virtual desktops and can warn you if it is not supported on this version of Windows." />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <TextBlock Text="Data" Style="{StaticResource SettingsSectionStyle}" />
+        <Border Style="{StaticResource SettingsItemStyle}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Margin="16,0,0,0" VerticalAlignment="Center" Click="OpenInExplorerButtonClick">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontSize="14" FontFamily="Segoe MDL2 Assets" Text="&#xE838;" Margin="0,0,8,0" />
+                        <TextBlock Text="Open folder" />
+                    </StackPanel>
+                </Button>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Settings and logs" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="Open the folder that contains settings.json and the log file." />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </wtc:SpacedStackPanel>
+</UserControl>

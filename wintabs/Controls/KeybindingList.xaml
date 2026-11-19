@@ -1,0 +1,39 @@
+﻿<UserControl x:Class="wintabs.Controls.KeybindingList"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:wintabs.Controls"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             d:DataContext="{d:DesignInstance Type=controls:KeybindingList}"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800"
+             Grid.IsSharedSizeScope="True">
+    <Border Style="{StaticResource SettingsItemStyle}" Margin="0, 5" TextBlock.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+        <ItemsControl ItemsSource="{Binding Path=Keybindings}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="2" IsItemsHost="True" Margin="0, -4" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="8,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="CaptionColumn" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="{Binding Path=Element.Caption}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,12,0" />
+
+                        <controls:KeyPattern Grid.Column="1"
+                                             HorizontalAlignment="Right"
+                                             Pattern="{Binding Path=Element.Pattern}" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Border>
+</UserControl>

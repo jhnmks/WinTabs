@@ -1,0 +1,1305 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
+
+using wintabs.Utilities;
+
+using WinMan;
+using wintabs.Layouts.Tiling;
+using wintabs.Layouts;
+using wintabs.ViewModels;
+
+namespace wintabs
+{
+    internal partial class TilingService
+    {
+        private void RestoreOriginalLayout()
+        {
+            using (m_backendLock.EnterScope())
+            {
+                foreach (var desktop in m_workspace.VirtualDesktopManager.Desktops)
+                {
+                    try
+                    {
+                        var tree = m_backend.GetTree(desktop);
+                        if (tree == null)
+                            continue;
+
+                        foreach (var window in tree.Root!.Windows)
+                        {
+                            var originalPosition = m_backend.GetOriginalPosition(window.WindowReference);
+                            try
+                            {
+                                window.WindowReference.SetPosition(originalPosition);
+                            }
+                            catch (InvalidWindowReferenceException)
+                            {
+                                continue;
+                            }
+                            catch (InvalidOperationException) when (window.WindowReference.State != WindowState.Restored)
+                            {
+                                continue;
+                            }
+                        }
+                    }
+                    catch (KeyNotFoundException)
+                    {
+                        continue;
+                    }
+                    catch (InvalidOperationException e)
+                    {
+                        m_logger.Warning(e, "Exception thrown while restoring the original window layout!");
+                    }
+                }
+            }
+        }
+
+
+        private async Task UpdateLayoutAsync()
+        {
+            if (!Active || m_workspacePaused)
+                return;
+
+            IVirtualDesktop desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+
+            List<TilingNode> snapshot;
+            IReadOnlyCollection<TilingNode> focusedPath;
+            TilingNode? focusedNode;
+
+            using (m_backendLock.EnterScope())
+            {
+                var tree = m_backend.GetTree(desktop);
+                if (tree?.Root == null)
+                    return;
+
+                tree.WorkArea = m_display.WorkArea;
+                if (tree.WorkArea.Width <= 0 || tree.WorkArea.Height <= GetPanelPaddingRect().Top)
+                    return;
+                if (tree.Root is SplitPanelNode)
+                    tree.Measure();
+                tree.Arrange();
+
+                snapshot = tree.Root!.Children.Count == 0 ? [] : tree.Root.Nodes.ToList();
+                var groups = snapshot.OfType<StackPanelNode>().Where(group => group.Children.Count > 1).ToArray();
+                if (groups.Length != 0)
+                {
+                    var zOrder = m_workspace.CreateSnapshotZOrderComparer();
+                    foreach (var group in groups)
+                    {
+                        var front = group.Children.OfType<WindowNode>().OrderBy(tab => tab.WindowReference, zOrder).FirstOrDefault();
+                        if (front != null)
+                            group.SelectTab(front);
+                    }
+                }
+                focusedNode = m_backend.GetFocus(desktop);
+                focusedPath = (IReadOnlyCollection<TilingNode>?)focusedNode?.PathToRoot?.ToList() ?? [];
+            }
+
+            async ValueTask RepositionAsync()
+            {
+                try
+                {
+                    Freeze();
+                    IList<WindowNode> snapshotWindows;
+                    using (m_ignoreRepositionSetLock.EnterScope())
+                    {
+                        snapshotWindows = snapshot.OfType<WindowNode>().Where(x => !m_ignoreRepositionSet.ContainsKey(x.WindowReference)).ToList();
+                    }
+
+                    await TransitionTargetGroup.PerformTransitionAsync(CalculateRepositionTargets(snapshotWindows));
+                }
+                finally
+                {
+                    Unfreeze();
+                }
+            }
+
+            var foreground = m_workspace.FocusedWindow;
+            var activeTab = foreground == null ? null : snapshot.OfType<WindowNode>()
+                .FirstOrDefault(tab => Equals(tab.WindowReference, foreground));
+
+            var repositionTask = RepositionAsync();
+
+            m_gui.UpdateOverlay(snapshot, focusedPath, activeTab);
+
+            await repositionTask;
+        }
+
+        private List<TransitionTarget> CalculateRepositionTargets(IEnumerable<WindowNode> snapshot)
+        {
+            var targets = new List<TransitionTarget>();
+            foreach (var window in snapshot)
+            {
+                try
+                {
+                    if (window.WindowReference.State != WindowState.Restored)
+                        continue;
+
+                    var currentPosition = window.WindowReference.Position;
+                    if (!window.WindowReference.CanResize)
+                    {
+                        var targetRect = CenterFixedSizeWindow(window.ComputedRectangle, currentPosition.Size);
+                        if (targetRect == currentPosition)
+                        {
+                            continue;
+                        }
+                        targets.Add(new TransitionTarget(window.WindowReference, currentPosition, targetRect));
+                    }
+                    else
+                    {
+                        m_logger.Debug("Updating position of window {Window}", window.WindowReference.DebugString());
+                        var rect = window.ComputedRectangle;
+                        var frame = window.WindowReference.FrameMargins;
+                        var adjustedRect = new Rectangle(
+                            left: rect.Left - frame.Left,
+                            top: rect.Top - frame.Top,
+                            right: rect.Right + frame.Right,
+                            bottom: rect.Bottom + frame.Bottom);
+
+                        if (adjustedRect == currentPosition)
+                        {
+                            continue;
+                        }
+
+                        targets.Add(new TransitionTarget(window.WindowReference, currentPosition, adjustedRect));
+
+                        var minSize = window.WindowReference.MinSize;
+                        if (minSize.HasValue)
+                        {
+                            if (minSize.Value.X > adjustedRect.Width)
+                            {
+                                m_logger.Warning("New width for {Window} is smaller than the value reported by WM_GETMINMAXINFO ({ComputedWidth} < {MinimumWidth})",
+                                    window.WindowReference.DebugString(), adjustedRect.Width, minSize.Value.X);
+                            }
+                            if (minSize.Value.Y > adjustedRect.Height)
+                            {
+                                m_logger.Warning("New height for {Window} is smaller than the value reported by WM_GETMINMAXINFO ({ComputedHeight} < {MinimumHeight})",
+                                    window.WindowReference.DebugString(), adjustedRect.Height, minSize.Value.Y);
+                            }
+                        }
+                    }
+                }
+                catch (InvalidWindowReferenceException)
+                {
+                    // Ignore
+                }
+                catch (Win32Exception e)
+                {
+                    m_logger.Error(e, "Failed to calculate reposition targets");
+                }
+            }
+            return targets;
+        }
+
+        private IntPtr GetOverlayAnchor()
+        {
+            var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+            using (m_backendLock.EnterScope())
+            {
+                var comparer = m_workspace.CreateSnapshotZOrderComparer();
+                var tree = m_backend.GetTree(desktop);
+                if (tree == null)
+                    return new IntPtr(0);
+                var topWindow = tree.Root!.Windows
+                    .OrderBy(x => x.WindowReference, comparer)
+                    .FirstOrDefault();
+
+                if (topWindow != null)
+                    return topWindow.WindowReference.Handle;
+
+                return new IntPtr(0);
+            }
+        }
+
+        private void ToggleFloat(IWindow window)
+        {
+            bool floated;
+            using (m_floatingSetLock.EnterScope())
+            {
+                if (m_floatingSet.Contains(window))
+                {
+                    floated = false;
+                    m_floatingSet.Remove(window);
+                }
+                else
+                {
+                    floated = true;
+                    m_floatingSet.Add(window);
+                }
+            }
+            DetectChanges(window);
+            if (floated)
+            {
+                OnWindowFloated(window);
+            }
+            else
+            {
+                try
+                {
+                    using (m_backendLock.EnterScope())
+                    {
+                        m_backend.SetFocus(window);
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private void OnDisplayWorkAreaChanged(object? sender, DisplayRectangleChangedEventArgs e)
+        {
+            InvalidateLayout();
+        }
+
+        private void OnDisplayScalingChanged(object? sender, DisplayScalingChangedEventArgs e)
+        {
+            PropagatePanelHeightChange();
+        }
+
+        private void OnPlacementFailed(object? sender, TilingFailedEventArgs e)
+        {
+            if (e.FailReason == TilingError.NoValidPlacementExists && e.FailSource != null)
+            {
+                using (m_floatingSetLock.EnterScope())
+                {
+                    m_floatingSet.Add(e.FailSource);
+                }
+                OnWindowFloated(e.FailSource);
+            }
+        }
+
+        private void OnWindowFloated(IWindow window)
+        {
+            Rectangle? originalPosition;
+            try
+            {
+                using (m_backendLock.EnterScope())
+                {
+                    originalPosition = m_backend.GetOriginalPosition(window);
+                }
+            }
+            catch
+            {
+                originalPosition = null;
+            }
+            try
+            {
+                originalPosition ??= GetOptimalRestoredSize(window);
+
+                var originalDisplay = m_workspace.DisplayManager.Displays.FirstOrDefault(x => x.Bounds.Contains(originalPosition.Value.Center));
+                originalDisplay ??= m_workspace.DisplayManager.PrimaryDisplay;
+
+                var displayBounds = originalDisplay.Bounds;
+
+                var centeredPosition = Rectangle.OffsetAndSize(
+                    displayBounds.Left + displayBounds.Width / 2 - originalPosition.Value.Width / 2,
+                    displayBounds.Top + displayBounds.Height / 2 - originalPosition.Value.Height / 2,
+                    originalPosition.Value.Width,
+                    originalPosition.Value.Height);
+
+                window.SetPosition(centeredPosition);
+                FocusHelper.ForceActivate(window.Handle);
+            }
+            catch (Exception e) when (e is InvalidWindowReferenceException || e is InvalidOperationException && window.State != WindowState.Restored)
+            {
+                // ignore
+            }
+        }
+
+        private Rectangle GetOptimalRestoredSize(IWindow window)
+        {
+            var screenSize = m_display.WorkArea.Size;
+            var minSize = window.MinSize ?? new Point(0, 0);
+            var maxSize = window.MaxSize ?? new Point(screenSize.X, screenSize.Y);
+            var pos = window.Position;
+
+            return Rectangle.OffsetAndSize(
+                pos.Left,
+                pos.Top,
+                Math.Max(minSize.X, Math.Min(maxSize.X, Math.Min(screenSize.X, (screenSize.X + minSize.X) / 2))),
+                Math.Max(minSize.Y, Math.Min(maxSize.Y, Math.Min(screenSize.Y, (screenSize.Y + minSize.Y) / 2))));
+        }
+
+
+        private void OnWindowFloatRequested(object? sender, WindowNode e)
+        {
+            ToggleFloat(e.WindowReference);
+        }
+
+        private void OnWindowIgnoreProcessRequested(object? sender, WindowNode e)
+        {
+            App.Current.AppState.Settings.SaveAsync(x =>
+            {
+                return x with { ProcessIgnoreList = [.. x.ProcessIgnoreList, e.WindowReference.GetCachedProcessName()] };
+            });
+        }
+        private void OnWindowIgnoreClassRequested(object? sender, WindowNode e)
+        {
+            App.Current.AppState.Settings.SaveAsync(x =>
+            {
+                return x with { ClassIgnoreList = [.. x.ClassIgnoreList, ((WinMan.Windows.Win32Window)e.WindowReference).ClassName] };
+            });
+        }
+
+        private void OnDesktopAdded(object? sender, DesktopChangedEventArgs e)
+        {
+            m_logger.Information("Desktop {Desktop} added to workspace", e.Source);
+            var orientation = m_display.Bounds.Width >= m_display.Bounds.Height ? PanelOrientation.Horizontal : PanelOrientation.Vertical;
+            using (m_backendLock.EnterScope())
+            {
+                m_backend.RegisterDesktop(e.Source, m_display.WorkArea, orientation);
+            }
+        }
+
+        private void OnDesktopRemoved(object? sender, DesktopChangedEventArgs e)
+        {
+            m_logger.Information("Desktop {Desktop} removed from workspace", e.Source);
+            using (m_backendLock.EnterScope())
+            {
+                m_backend.UnregisterDesktop(e.Source);
+            }
+        }
+
+        private void OnCurrentDesktopChanged(object? sender, CurrentDesktopChangedEventArgs e)
+        {
+            Refresh();
+            InvalidateLayout();
+        }
+
+        private void OnWorkspaceFocusChanged(object? sender, FocusedWindowChangedEventArgs e) => InvalidateLayout();
+
+        private void OnWindowGotFocus(object? sender, WindowFocusChangedEventArgs e)
+        {
+            m_dispatcher.BeginInvoke(() =>
+            {
+                if (!Active || m_workspacePaused || !Equals(m_workspace.FocusedWindow, e.Source))
+                    return;
+
+                m_logger.Debug("Got focus on {Window}", e.Source.DebugString());
+                try
+                {
+                    bool hideMaximised = false;
+                    using (m_backendLock.EnterScope())
+                    {
+                        if (m_backend.HasWindow(e.Source))
+                        {
+                            m_logger.Debug("Window {Window} is managed by backend, need to hide all obstructing windows", e.Source.DebugString());
+                            // Focused restored windows that are in the tree cause all maximised windows
+                            // to be send to the back
+                            hideMaximised = true;
+                            m_backend.SetFocus(e.Source);
+                        }
+                        else
+                        {
+                            m_logger.Debug("Window {Window} is not managed by backend", e.Source.DebugString());
+                            return;
+                        }
+                    }
+
+                    if (hideMaximised)
+                    {
+                        m_logger.Debug("Moving all obstructing maximised windows to back");
+                        var comparer = m_workspace.CreateSnapshotZOrderComparer();
+                        foreach (var maximisedWindow in m_workspace.GetCurrentDesktopSnapshot()
+                            .Where(x => x.State == WindowState.Maximized && m_display.Bounds.Contains(x.Position.Center))
+                            .OrderBy(x => x, comparer))
+                        {
+                            m_logger.Information("Moving maximised window {Window} to back", maximisedWindow.DebugString());
+                            try
+                            {
+                                if (maximisedWindow.CanReorder)
+                                {
+                                    maximisedWindow.SendToBack();
+                                }
+                            }
+                            catch (InvalidWindowReferenceException)
+                            {
+                                continue;
+                            }
+                            catch (Win32Exception ex)
+                            {
+                                m_logger.Error(ex, "Moving window {Window} to back failed ({@Metadata})", maximisedWindow.DebugString(), maximisedWindow.GetMetadata());
+                                continue;
+                            }
+                        }
+                    }
+                    InvalidateLayout();
+                }
+                catch (InvalidWindowReferenceException)
+                {
+                    return;
+                }
+            }, System.Windows.Threading.DispatcherPriority.DataBind);
+        }
+
+        private void OnWindowAdded(object? sender, WindowChangedEventArgs e)
+        {
+            m_logger.Debug("Window {Window} added to workspace", e.Source.DebugString());
+            try
+            {
+                using (m_windowSetLock.EnterScope())
+                {
+                    if (!m_windowSet.Add(e.Source))
+                        return;
+                    BindEventHandlers(e.Source);
+                }
+                if (m_exclusionMatchers.Any(x => x.Matches(e.Source)))
+                {
+                    using (m_floatingSetLock.EnterScope())
+                    {
+                        m_floatingSet.Add(e.Source);
+                    }
+                }
+
+                if (!AutoRegisterWindows)
+                {
+                    return;
+                }
+
+                if (m_autoFloatNewWindows)
+                {
+                    using (m_floatingSetLock.EnterScope())
+                    {
+                        m_floatingSet.Add(e.Source);
+                    }
+                }
+
+                if (!m_workspacePaused && CanManage(e.Source) && e.Source.State == WindowState.Restored)
+                {
+                    m_logger.Information("Window {Window} can be managed, registering with backend ({Display})", e.Source.DebugString(), m_display);
+                    m_dispatcher.BeginInvoke(() =>
+                    {
+                        try
+                        {
+                            try
+                            {
+                                using (m_backendLock.EnterScope())
+                                {
+                                    if (m_workspacePaused || m_backend.HasWindow(e.Source) ||
+                                        e.Source.State != WindowState.Restored || !CanManage(e.Source))
+                                    {
+                                        return;
+                                    }
+
+                                    RegisterTab(e.Source);
+                                }
+                            }
+                            catch (NoValidPlacementExistsException)
+                            {
+                                PlacementFailed?.Invoke(this, new TilingFailedEventArgs(
+                                    TilingError.NoValidPlacementExists, e.Source));
+                            }
+                        }
+                        catch
+                        {
+                            return;
+                        }
+
+                        InvalidateLayout();
+                    }, System.Windows.Threading.DispatcherPriority.DataBind);
+                }
+            }
+            catch (InvalidWindowReferenceException)
+            {
+                return;
+            }
+        }
+
+        private void OnWindowRemoved(object? sender, WindowChangedEventArgs e)
+        {
+            if (m_workspacePaused)
+                return;
+
+            m_logger.Information("Window {Window} removed from workspace", e.Source.DebugString());
+
+            using (m_windowSetLock.EnterScope())
+            {
+                if (m_windowSet.Remove(e.Source))
+                    UnbindEventHandlers(e.Source);
+            }
+            using (m_savedLocationsLock.EnterScope())
+            {
+                m_savedLocations.Remove(e.Source);
+            }
+            using (m_ignoreRepositionSetLock.EnterScope())
+            {
+                m_ignoreRepositionSet.Remove(e.Source);
+            }
+            using (m_backendLock.EnterScope())
+            {
+                if (m_backend.HasWindow(e.Source))
+                {
+                    m_logger.Debug("Unregistering window {Window} from backend", e.Source.DebugString());
+                    m_backend.UnregisterWindow(e.Source);
+                    InvalidateLayout();
+                }
+            }
+            using (m_floatingSetLock.EnterScope())
+            {
+                m_floatingSet.Remove(e.Source);
+            }
+        }
+
+        private void OnTabSplitRequested(WindowNode tab, TilingDirection direction)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+
+            using (m_backendLock.EnterScope())
+            {
+                if (!m_backend.SplitTab(tab, direction))
+                    return;
+            }
+            OnTilingNodeFocusRequested(this, tab);
+            InvalidateLayout();
+        }
+
+        private StackPanelNode? FindDropGroup(DesktopTree? sourceDesktop, StackPanelNode source, Point point)
+        {
+            var desktop = m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop);
+            return sourceDesktop == desktop
+                ? desktop?.Root?.Nodes.OfType<StackPanelNode>()
+                    .FirstOrDefault(group => group != source && TilingWorkspace.GetGroupBounds(group).Contains(point))
+                : null;
+        }
+
+        private void OnTabMoved(WindowNode tab, Point point, bool commit)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+
+            using (m_backendLock.EnterScope())
+            {
+                var desktop = m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop);
+                if (desktop == null || tab.Desktop != desktop)
+                    return;
+                if (!commit)
+                {
+                    var target = m_backend.GetTabDropTarget(tab, point);
+                    m_gui.PreviewRectangle = target is { } drop ? GetDropPreview(drop.Group, drop.Edge) : null;
+                    return;
+                }
+                if (!m_backend.DropTab(tab, point))
+                    return;
+            }
+            OnTilingNodeFocusRequested(this, tab);
+            InvalidateLayout();
+        }
+
+        private void OnGroupMoved(StackPanelNode source, Point point, bool commit)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+
+            if (!m_display.Bounds.Contains(point))
+            {
+                m_gui.PreviewRectangle = null;
+                ExternalGroupDrag?.Invoke(this, source, point, commit);
+                return;
+            }
+
+            ClearExternalGroupPreview?.Invoke();
+            if (commit)
+                m_gui.PreviewRectangle = null;
+            using (m_backendLock.EnterScope())
+            {
+                var target = FindDropGroup(source.Desktop, source, point);
+                if (target == null)
+                {
+                    m_gui.PreviewRectangle = null;
+                    return;
+                }
+
+                var bounds = TilingWorkspace.GetGroupBounds(target);
+                double x = (double)(point.X - bounds.Left) / Math.Max(1, bounds.Width);
+                double y = (double)(point.Y - bounds.Top) / Math.Max(1, bounds.Height);
+                var edges = new[] { x, 1 - x, y, 1 - y };
+                int nearest = Array.IndexOf(edges, edges.Min());
+                int headerBottom = target.Parent == null ? bounds.Top + target.Padding.Top : target.ComputedRectangle.Top;
+                TilingDirection? direction = point.Y >= headerBottom && edges[nearest] < 0.25 ? nearest switch
+                {
+                    0 => TilingDirection.Left,
+                    1 => TilingDirection.Right,
+                    2 => TilingDirection.Up,
+                    _ => TilingDirection.Down,
+                } : null;
+                if (commit)
+                {
+                    if (m_backend.MoveTabGroup(source, target, direction))
+                        InvalidateLayout();
+                    return;
+                }
+
+                m_gui.PreviewRectangle = GetDropPreview(target, direction);
+            }
+        }
+
+        private static Rectangle GetDropPreview(StackPanelNode group, TilingDirection? direction)
+        {
+            var bounds = TilingWorkspace.GetGroupBounds(group);
+            return direction switch
+            {
+                TilingDirection.Left => new Rectangle(bounds.Left, bounds.Top, bounds.Center.X, bounds.Bottom),
+                TilingDirection.Right => new Rectangle(bounds.Center.X, bounds.Top, bounds.Right, bounds.Bottom),
+                TilingDirection.Up => new Rectangle(bounds.Left, bounds.Top, bounds.Right, bounds.Center.Y),
+                TilingDirection.Down => new Rectangle(bounds.Left, bounds.Center.Y, bounds.Right, bounds.Bottom),
+                _ => bounds,
+            };
+        }
+
+        internal void SetExternalGroupPreview(bool visible)
+        {
+            m_gui.PreviewRectangle = visible && Active && !m_workspacePaused ? m_display.WorkArea : null;
+        }
+
+        internal bool IsEmptyOnCurrentDesktop()
+        {
+            using (m_backendLock.EnterScope())
+                return Active && !m_workspacePaused && m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop)?.Root?.Children.Count == 0;
+        }
+
+        internal bool TransferGroupTo(StackPanelNode group, TilingService destination)
+        {
+            if (!Active || m_workspacePaused || !destination.Active || destination.m_workspacePaused)
+                return false;
+
+            WindowNode? focus;
+            var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+            using (m_backendLock.EnterScope())
+            using (destination.m_backendLock.EnterScope())
+            {
+                if (!m_backend.TransferTabGroup(group, destination.m_backend, desktop))
+                    return false;
+
+                group.Padding = destination.GetPanelPaddingRect();
+                group.Spacing = destination.GetPanelSpacing();
+                focus = destination.m_backend.GetFocus(desktop) as WindowNode;
+            }
+            InvalidateLayout();
+            destination.InvalidateLayout();
+            if (focus != null)
+                destination.OnTilingNodeFocusRequested(this, focus);
+            return true;
+        }
+
+        private void OnDividerResized(SplitDividerViewModel divider, double delta)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+
+            using (m_backendLock.EnterScope())
+            {
+                if (divider.Split.Desktop == m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop) &&
+                    divider.Split.ResizeDivider(divider.Index, delta))
+                    InvalidateLayout();
+            }
+        }
+
+        private void OnWindowPositionChangeEnd(object? sender, WindowPositionChangedEventArgs e)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+
+            Rectangle startPosition;
+            using (m_ignoreRepositionSetLock.EnterScope())
+            {
+                if (!m_ignoreRepositionSet.Remove(e.Source, out startPosition))
+                    return;
+            }
+            var dropPoint = wintabs.DllImports.PInvoke.GetCursorPos(out var cursor)
+                ? new Point(cursor.x, cursor.y) : m_workspace.CursorLocation;
+            m_dispatcher.InvokeAsync(() =>
+            {
+                if (!Active || m_workspacePaused)
+                    return;
+
+                m_gui.PreviewRectangle = null;
+                try
+                {
+                    if (e.Source.State == WindowState.Restored && e.NewPosition != startPosition &&
+                        m_display.Bounds.Contains(dropPoint))
+                    {
+                        WindowNode? tab;
+                        using (m_backendLock.EnterScope())
+                            tab = m_backend.FindWindow(e.Source);
+
+                        if (tab != null)
+                        {
+                            if (e.NewPosition.Size == startPosition.Size)
+                            {
+                                OnTabMoved(tab, dropPoint, commit: true);
+                            }
+                            else
+                            {
+                                using (m_backendLock.EnterScope())
+                                {
+                                    if (tab.Parent is StackPanelNode group)
+                                        m_backend.ResizeNode(group, e.NewPosition, startPosition);
+                                }
+                            }
+                            InvalidateLayout();
+                            return;
+                        }
+                    }
+                    DetectChanges(e.Source);
+                }
+                catch (InvalidWindowReferenceException)
+                {
+                    // The window closed before the dispatcher handled the gesture.
+                }
+                InvalidateLayout();
+            });
+        }
+
+        private int m_nativeDragPreviewQueued;
+
+        private void OnNativeDragCursorChanged(object? sender, CursorLocationChangedEventArgs e)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_ignoreRepositionSetLock.EnterScope())
+            {
+                if (m_ignoreRepositionSet.Count == 0)
+                    return;
+            }
+            if (System.Threading.Interlocked.Exchange(ref m_nativeDragPreviewQueued, 1) != 0)
+                return;
+            _ = m_dispatcher.InvokeAsync(() =>
+            {
+                System.Threading.Interlocked.Exchange(ref m_nativeDragPreviewQueued, 0);
+                if (!Active || m_workspacePaused)
+                    return;
+                KeyValuePair<IWindow, Rectangle>[] dragging;
+                using (m_ignoreRepositionSetLock.EnterScope())
+                    dragging = m_ignoreRepositionSet.ToArray();
+                foreach (var (window, start) in dragging)
+                {
+                    try
+                    {
+                        var position = window.Position;
+                        if (position == start || position.Size != start.Size)
+                            continue;
+                        WindowNode? tab;
+                        using (m_backendLock.EnterScope())
+                            tab = m_backend.FindWindow(window);
+                        if (tab != null)
+                        {
+                            OnTabMoved(tab, m_workspace.CursorLocation, commit: false);
+                            return;
+                        }
+                    }
+                    catch (InvalidWindowReferenceException)
+                    {
+                        // A window may close during the gesture.
+                    }
+                }
+                if (dragging.Length != 0)
+                    m_gui.PreviewRectangle = null;
+            }, System.Windows.Threading.DispatcherPriority.Input);
+        }
+
+        private void OnWindowPositionChanged(object? sender, WindowPositionChangedEventArgs e)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+
+            using (m_ignoreRepositionSetLock.EnterScope())
+            {
+                if (m_ignoreRepositionSet.ContainsKey(e.Source))
+                    return;
+            }
+
+            // Keep resizable tabs on their assigned monitor during programmatic moves.
+            // Fixed-size apps can move themselves back to a different monitor after placement.
+            m_dispatcher.InvokeAsync(() =>
+            {
+                if (!Active || m_workspacePaused || IsInWindowGesture(e.Source))
+                    return;
+
+                try
+                {
+                    using (m_backendLock.EnterScope())
+                    {
+                        if (!m_backend.HasWindow(e.Source) ||
+                            (!e.Source.CanResize && !m_display.Bounds.Contains(e.Source.Position.Center)))
+                            DetectChanges(e.Source);
+                    }
+                }
+                catch (InvalidWindowReferenceException)
+                {
+                    // The window closed before the queued event was processed.
+                }
+            }, System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        private bool IsInWindowGesture(IWindow window)
+        {
+            using (m_ignoreRepositionSetLock.EnterScope())
+                return m_ignoreRepositionSet.ContainsKey(window);
+        }
+
+        private void OnWindowTopmostChanged(object? sender, WindowTopmostChangedEventArgs e)
+        {
+            if (!m_active)
+                return;
+
+            try
+            {
+                m_logger.Verbose("Changed topmost of window {Window}", e.Source.DebugString());
+                DetectChanges(e.Source);
+            }
+            catch (InvalidWindowReferenceException)
+            {
+                return;
+            }
+        }
+
+        private void OnWindowStateChanged(object? sender, WindowStateChangedEventArgs e)
+        {
+            if (!m_active || m_workspacePaused)
+                return;
+
+            void UnregisterAndSaveLocation()
+            {
+                using (m_backendLock.EnterScope())
+                {
+                    var window = m_backend.FindWindow(e.Source);
+                    if (window != null)
+                    {
+                        using (m_savedLocationsLock.EnterScope())
+                        {
+                            // Be resilient to multiple OnWindowStateChanged events happening one after the other
+                            m_savedLocations[e.Source] = new NodeLocation(window);
+                        }
+                        InvalidateLayout();
+                        m_backend.UnregisterWindow(e.Source);
+                    }
+                }
+                DetectChanges(e.Source);
+            }
+
+            void RegisterAndRestoreLocation()
+            {
+                NodeLocation? saved;
+                using (m_savedLocationsLock.EnterScope())
+                    m_savedLocations.Remove(e.Source, out saved);
+
+                using (m_backendLock.EnterScope())
+                {
+                    var node = m_backend.FindWindow(e.Source);
+                    if (node == null)
+                    {
+                        var tree = m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop);
+                        node = saved?.Parent is StackPanelNode group && group.Desktop != null && group.Desktop == tree
+                            ? m_backend.RegisterWindow(e.Source, group)
+                            : RegisterTab(e.Source);
+                        if (Equals(m_workspace.FocusedWindow, e.Source))
+                            m_backend.SetFocus(node);
+                    }
+                    var parent = node.Parent!;
+                    if (saved?.Parent == parent)
+                        parent.Move(parent.IndexOf(node), Math.Min(saved.Index, parent.Children.Count - 1));
+                }
+
+                InvalidateLayout();
+            }
+
+            try
+            {
+                m_logger.Information("Changed state of window {Window} to {NewState}", e.Source.DebugString(), e.NewState);
+
+                try
+                {
+                    // Window is now minimized or maximized but was restored
+                    if ((e.NewState == WindowState.Maximized || e.NewState == WindowState.Minimized)
+                        && e.OldState == WindowState.Restored)
+                    {
+                        UnregisterAndSaveLocation();
+                    }
+                    // Window is now restored
+                    else if (e.NewState == WindowState.Restored
+                        && (e.OldState == WindowState.Maximized || e.OldState == WindowState.Minimized))
+                    {
+                        if (!CanManage(e.Source))
+                        {
+                            return;
+                        }
+                        RegisterAndRestoreLocation();
+                    }
+                    else
+                    {
+                        DetectChanges(e.Source);
+                    }
+                }
+                catch (InvalidWindowReferenceException)
+                {
+                    return;
+                }
+                catch (WindowAlreadyRegisteredException)
+                {
+                    return;
+                }
+
+                if (Equals(m_workspace.FocusedWindow, sender))
+                {
+                    m_logger.Debug("Window {Window} is also focused, calling OnWindowGotFocus", e.Source.DebugString());
+                    // This is to update focus when a maximised window is restored.
+                    OnWindowGotFocus(e.Source, new WindowFocusChangedEventArgs(e.Source, true));
+                }
+            }
+            catch (InvalidWindowReferenceException)
+            {
+                return;
+            }
+        }
+
+        private void OnWindowPositionChangeStart(object? sender, WindowPositionChangedEventArgs e)
+        {
+            if (!m_active || m_workspacePaused)
+                return;
+
+            using (m_ignoreRepositionSetLock.EnterScope())
+            {
+                m_ignoreRepositionSet.TryAdd(e.Source, e.NewPosition);
+            }
+            InvalidateLayout();
+        }
+
+        private void OnTilingNodeFocusRequested(object? sender, TilingNode e)
+        {
+            using (m_backendLock.EnterScope())
+            {
+                var windowNode = e.Windows.FirstOrDefault();
+                try
+                {
+                    if (windowNode != null)
+                    {
+                        if (FocusHelper.ForceActivate(windowNode.WindowReference.Handle))
+                        {
+                            m_backend.SetFocus(windowNode.WindowReference);
+                            InvalidateLayout();
+                        }
+                    }
+                }
+                catch (InvalidWindowReferenceException)
+                {
+                    return;
+                }
+            }
+        }
+
+        private void OnTilingNodeCloseRequested(object? sender, TilingNode e)
+        {
+            foreach (var window in e.Windows.ToList())
+            {
+                try
+                {
+                    if (window.WindowReference.CanClose)
+                    {
+                        window.WindowReference.Close();
+                    }
+                }
+                catch (InvalidWindowReferenceException)
+                {
+                    // Ignore
+                }
+                catch (Win32Exception)
+                {
+                    // Ignore
+                    // TODO: Show toast
+                }
+            }
+        }
+
+        private void BindEventHandlers(IWindow window)
+        {
+            window.StateChanged += OnWindowStateChanged;
+            window.PositionChangeStart += OnWindowPositionChangeStart;
+            window.PositionChangeEnd += OnWindowPositionChangeEnd;
+            window.PositionChanged += OnWindowPositionChanged;
+            window.GotFocus += OnWindowGotFocus;
+            window.TopmostChanged += OnWindowTopmostChanged;
+        }
+
+        private void UnbindEventHandlers(IWindow window)
+        {
+            window.StateChanged -= OnWindowStateChanged;
+            window.PositionChangeStart -= OnWindowPositionChangeStart;
+            window.PositionChangeEnd -= OnWindowPositionChangeEnd;
+            window.PositionChanged -= OnWindowPositionChanged;
+            window.GotFocus -= OnWindowGotFocus;
+            window.TopmostChanged -= OnWindowTopmostChanged;
+        }
+
+        private WindowNode RegisterTab(IWindow window)
+        {
+            var node = m_backend.RegisterWindow(window);
+            node.Parent!.Padding = GetPanelPaddingRect();
+            node.Parent.Spacing = GetPanelSpacing();
+            if (Equals(m_workspace.FocusedWindow, window))
+                m_backend.SetFocus(node);
+            return node;
+        }
+
+        private bool DetectChanges(IWindow window)
+        {
+            if (m_workspacePaused)
+                return false;
+
+            m_logger.Verbose("Dirty checking for changes with window {Window}", window.DebugString());
+            try
+            {
+                if (window.State == WindowState.Restored && CanManage(window))
+                {
+                    if (!AutoRegisterWindows)
+                    {
+                        return false;
+                    }
+
+                    try
+                    {
+                        using (m_backendLock.EnterScope())
+                        {
+                            try
+                            {
+                                if (!m_backend.HasWindow(window))
+                                {
+                                    m_logger.Debug("Window {Window} can be managed, but is not registered with backend, registering now", window.DebugString());
+                                    RegisterTab(window);
+                                    InvalidateLayout();
+                                    return true;
+                                }
+                            }
+                            catch (InvalidWindowReferenceException)
+                            {
+                                if (m_backend.HasWindow(window))
+                                    m_backend.UnregisterWindow(window);
+                            }
+                        }
+                    }
+                    catch (NoValidPlacementExistsException)
+                    {
+                        PlacementFailed?.Invoke(this, new TilingFailedEventArgs(
+                            TilingError.NoValidPlacementExists, window));
+                    }
+                }
+                else
+                {
+                    using (m_backendLock.EnterScope())
+                    {
+                        if (m_backend.HasWindow(window))
+                        {
+                            m_logger.Verbose("Window {Window} can no longer be managed, but is registered with backend, unregistering now", window.DebugString());
+                            m_backend.UnregisterWindow(window);
+
+                            InvalidateLayout();
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (WindowAlreadyRegisteredException)
+            {
+                return false;
+            }
+            // TODO: Is the following catch block necessary?
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+            return false;
+        }
+
+        private bool CanManage(IWindow x, bool ignoreFloating = false)
+        {
+            bool IsOnCurrentDisplay()
+            {
+                var pos = x.Position.Center;
+                if (m_display.Bounds.Contains(pos))
+                    return true;
+
+                // Assign windows outside every display (e.g. after unplugging a monitor) only once.
+                return m_display.Equals(m_workspace.DisplayManager.PrimaryDisplay)
+                    && !m_workspace.DisplayManager.Displays.Any(d => d.Bounds.Contains(pos));
+            }
+            bool IsFloating()
+            {
+                using (m_floatingSetLock.EnterScope())
+                {
+                    return m_floatingSet.Contains(x);
+                }
+            }
+
+            // Cheap boolean read
+            if (x.IsTopmost)
+            {
+                return false;
+            }
+
+            // The window may have been removed while a registration was still queued.
+            using (m_windowSetLock.EnterScope())
+            {
+                if (!m_windowSet.Contains(x))
+                    return false;
+            }
+
+            // Live check: hosts such as mRemoteNG adopt another process's window into their own
+            // right after it is created. Once embedded it is no longer a top-level window.
+            if (!x.IsTopLevelWindow())
+            {
+                return false;
+            }
+
+            // Set lookup
+            if (!ignoreFloating && IsFloating())
+            {
+                return false;
+            }
+
+            // GetWindowPos + Lookup
+            if (!IsOnCurrentDisplay())
+            {
+                return false;
+            }
+
+            // Fixed-size windows can be moved into a tab group without being resized.
+            // OpenProcess (expensive)
+            if (!x.CanMove)
+            {
+                return false;
+            }
+
+            // Virtual Desktop stuff is very expensive
+            if (m_workspace.VirtualDesktopManager.IsWindowPinned(x))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private void InvalidateLayout()
+        {
+            if (!m_active || m_workspacePaused)
+                return;
+
+            m_dirty = true;
+            if (m_frozen.IsPositive() || System.Threading.Interlocked.Exchange(ref m_layoutQueued, 1) != 0)
+                return;
+
+            _ = m_dispatcher.InvokeAsync(async () =>
+            {
+                System.Threading.Interlocked.Exchange(ref m_layoutQueued, 0);
+                if (!m_dirty || m_frozen.IsPositive() || !m_active || m_workspacePaused)
+                    return;
+
+                m_dirty = false;
+                try
+                {
+                    await UpdateLayoutAsync();
+                }
+                catch (Exception e) when (e is InvalidReferenceException or Win32Exception or UnsatisfiableFlexConstraintsException)
+                {
+                    m_logger.Warning(e, "Could not apply the tab layout");
+                }
+            }, System.Windows.Threading.DispatcherPriority.DataBind);
+        }
+
+        private void Freeze()
+        {
+            m_frozen.Increment();
+        }
+
+        private void Unfreeze()
+        {
+            if (m_frozen.DecrementIfPositive())
+            {
+                if (m_dirty)
+                {
+                    InvalidateLayout();
+                }
+            }
+        }
+
+        internal static Rectangle CenterFixedSizeWindow(Rectangle container, Point size) => Rectangle.OffsetAndSize(
+            container.Left + Math.Max(0, container.Width - size.X) / 2,
+            container.Top + Math.Max(0, container.Height - size.Y) / 2,
+            size.X, size.Y);
+
+        private int GetPanelSpacing()
+        {
+            double scaling = m_display.Scaling;
+            return (int)(m_windowPadding * scaling);
+        }
+
+        private Rectangle GetPanelPaddingRect()
+        {
+            double scaling = m_display.Scaling;
+            return new Rectangle(0, (int)((m_panelHeight + m_windowPadding) * scaling), 0, 0);
+        }
+
+        private static System.Windows.Thickness ToThickness(Rectangle rc)
+        {
+            return new System.Windows.Thickness(rc.Left, rc.Top, rc.Right, rc.Bottom);
+        }
+
+        private void UpdateGuiNodeOptions()
+        {
+            m_dispatcher.Invoke(() =>
+            {
+                m_gui.PanelSpacing = GetPanelSpacing();
+                m_gui.PanelPadding = ToThickness(GetPanelPaddingRect());
+                m_gui.InvalidateView();
+                InvalidateLayout();
+            });
+        }
+
+        private void PropagatePaddingChange()
+        {
+            using (m_backendLock.EnterScope())
+            {
+                foreach (var panel in m_backend.Trees.SelectMany(x => x.Root!.Nodes).OfType<PanelNode>())
+                {
+                    panel.Spacing = GetPanelSpacing();
+                }
+            }
+            UpdateGuiNodeOptions();
+        }
+
+        private void PropagatePanelHeightChange()
+        {
+            using (m_backendLock.EnterScope())
+            {
+                foreach (var panel in m_backend.Trees.SelectMany(x => x.Root!.Nodes).OfType<PanelNode>())
+                {
+                    if (panel is StackPanelNode)
+                    {
+                        panel.Padding = GetPanelPaddingRect();
+                        panel.Spacing = GetPanelSpacing();
+                    }
+                }
+            }
+            UpdateGuiNodeOptions();
+        }
+
+
+        bool HasFocusAndAdjacentWindow(TilingDirection direction)
+        {
+            try
+            {
+                using (m_backendLock.EnterScope())
+                {
+                    m_backend.GetFocusAndAdjacentWindow(m_workspace.VirtualDesktopManager.CurrentDesktop, direction);
+                    return true;
+                }
+            }
+            catch (TilingFailedException e) when (e.FailReason == TilingError.MissingTarget || e.FailReason == TilingError.MissingAdjacentWindow)
+            {
+                return false;
+            }
+        }
+    }
+}

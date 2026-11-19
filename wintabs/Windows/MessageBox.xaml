@@ -1,0 +1,52 @@
+﻿<Window x:Class="wintabs.Windows.MessageBox"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:wintabs.Windows" 
+        xmlns:viewmodels="clr-namespace:wintabs.ViewModels"
+        d:DataContext="{d:DesignInstance Type=local:MessageBox}"
+        mc:Ignorable="d"
+        Title="{Binding Title}" 
+        Width="480"
+        Height="260" 
+        WindowStartupLocation="CenterScreen"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        FontSize="14"
+        Topmost="True"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Margin="16"  Grid.Column="0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="48" FontFamily="Segoe MDL2 Assets" Text="{Binding IconGlyph}" />
+        <StackPanel Orientation="Vertical" Margin="0,16,16,16" Grid.Column="1">
+            <ContentPresenter Content="{Binding Message}">
+                <ContentPresenter.Resources>
+                    <Style TargetType="{x:Type TextBlock}">
+                        <Setter Property="TextWrapping" Value="Wrap"/>
+                    </Style>
+                </ContentPresenter.Resources>
+            </ContentPresenter>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Vertical">
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="1" Margin="4,0" Style="{StaticResource AccentButtonStyle}" Click="OnPositiveButtonClick" Content="Yes" />
+                <Button Grid.Column="2" Margin="4,0,16,0" Click="OnNegativeButtonClick" Content="No" />
+            </Grid>
+        </StackPanel>
+    </Grid>
+</Window>

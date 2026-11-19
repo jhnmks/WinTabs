@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+
+    <Nullable>enable</Nullable>
+
+
+
+
+
+
+    <RepositoryType>git</RepositoryType>
+
+    <PackageTags>win32 windows window management shell</PackageTags>
+
+    <Authors>Veselin Karaganev</Authors>
+
+    <SignAssembly>False</SignAssembly>
+
+    <ProduceReferenceAssembly>True</ProduceReferenceAssembly>
+
+    <GenerateDocumentationFile>False</GenerateDocumentationFile>
+
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+    <Product>$(AssemblyName)</Product>
+
+    <PackageId>$(AssemblyName).Core</PackageId>
+
+    <AssemblyVersion></AssemblyVersion>
+
+    <Version>1.0.1</Version>
+  </PropertyGroup>
+
+</Project>

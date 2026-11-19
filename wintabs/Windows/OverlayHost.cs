@@ -1,0 +1,375 @@
+﻿using System;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
+
+using wintabs.DllImports;
+using wintabs.Utilities;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using WinMan;
+
+namespace wintabs.Windows
+{
+    /// <summary>
+    /// This is basically a workaround for showing overlay content that is ignored by the operating system.
+    /// It uses two identially-positioned windows, one with WS_EX_TRANSPARENT and one without.
+    /// </summary>
+    partial class OverlayHost : DependencyObject
+    {
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, GetWindowLongPtr_nIndex nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
+        private static extern IntPtr SetWindowLong32(IntPtr hWnd, GetWindowLongPtr_nIndex nIndex, IntPtr dwNewLong);
+
+        private static IntPtr SetWindowLongPtr(IntPtr hWnd, GetWindowLongPtr_nIndex nIndex, IntPtr dwNewLong)
+        {
+            if (IntPtr.Size == 8)
+            {
+                return SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
+            }
+            else
+            {
+                return SetWindowLong32(hWnd, nIndex, dwNewLong);
+            }
+        }
+
+        [Flags()]
+        internal enum SetWindowPosFlags : uint
+        {
+            IgnoreResize = 0x0001,
+            IgnoreMove = 0x0002,
+            DoNotActivate = 0x0010,
+            DoNotSendChangingEvent = 0x0400,
+            AsynchronousWindowPosition = 0x4000,
+        }
+
+        public static readonly DependencyProperty NonHitTestableContentProperty = DependencyProperty.Register(
+            nameof(NonHitTestableContent),
+            typeof(Control),
+            typeof(OverlayHost),
+            new PropertyMetadata(null));
+
+        public Control? NonHitTestableContent
+        {
+            get => (Control)GetValue(NonHitTestableContentProperty);
+            set => SetValue(NonHitTestableContentProperty, value);
+        }
+
+        public static readonly DependencyProperty ContentProperty = DependencyProperty.Register(
+            nameof(Content),
+            typeof(Control),
+            typeof(OverlayHost),
+            new PropertyMetadata(null));
+
+        public Control? Content
+        {
+            get => (Control)GetValue(ContentProperty);
+            set => SetValue(ContentProperty, value);
+        }
+
+        public Func<IntPtr>? AnchorSource { get; set; }
+
+        private readonly IDisplay m_display;
+        private readonly OverlayWindow m_window;
+        private readonly OverlayWindow m_nonHitTestableWindow;
+        private readonly IntPtr m_hwnd;
+        private readonly IntPtr m_nonHitTestableHwnd;
+        private readonly LowLevelMouseHook? m_mshk;
+        private bool m_isShown;
+        private (WinMan.Point Start, Action<WinMan.Point, bool> Update, Action Click, Action Cancel)? m_drag;
+        private bool m_dragMoved;
+        private readonly System.Windows.Threading.DispatcherTimer m_positionTimer;
+
+        public OverlayHost(IDisplay display)
+        {
+            m_display = display;
+            m_positionTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1),
+            };
+            m_positionTimer.Tick += (_, _) => UpdatePositions();
+
+            m_window = new OverlayWindow(display)
+            {
+                Title = "wintabsInteractiveOverlay",
+            };
+            m_nonHitTestableWindow = new OverlayWindow(display)
+            {
+                IsHitTestVisible = false,
+                Title = "wintabsNonInteractiveOverlay",
+            };
+
+            m_hwnd = new WindowInteropHelper(m_window).EnsureHandle();
+            m_nonHitTestableHwnd = new WindowInteropHelper(m_nonHitTestableWindow).EnsureHandle();
+
+            // Set an owner relationship so that m_hwnd is always rendered on top of m_nonHitTestableHwnd.
+            _ = SetWindowLongPtr(new(m_hwnd), GetWindowLongPtr_nIndex.GWLP_HWNDPARENT, m_nonHitTestableHwnd);
+
+            _ = SetWindowLongPtr(new(m_hwnd), GetWindowLongPtr_nIndex.GWL_EXSTYLE,
+                (int)(WINDOWS_EX_STYLE.WS_EX_TOOLWINDOW | WINDOWS_EX_STYLE.WS_EX_NOACTIVATE));
+            _ = SetWindowLongPtr(new(m_nonHitTestableHwnd), GetWindowLongPtr_nIndex.GWL_EXSTYLE,
+                (int)(WINDOWS_EX_STYLE.WS_EX_TOOLWINDOW | WINDOWS_EX_STYLE.WS_EX_TRANSPARENT | WINDOWS_EX_STYLE.WS_EX_NOACTIVATE));
+
+            DisableWindow(m_hwnd);
+            DisableWindow(m_nonHitTestableHwnd);
+            UpdatePositions();
+
+            display.Workspace.CursorLocationChanged += OnCursorLocationChanged;
+            display.Workspace.FocusedWindowChanged += OnFocusedWindowChanged;
+            display.Workspace.WindowAdded += OnWindowAdded;
+            display.Workspace.WindowRemoved += OnWindowRemoved;
+
+            if (App.Current.Services.GetService<LowLevelMouseHook>() is LowLevelMouseHook mshk)
+            {
+                m_mshk = mshk;
+                m_mshk.ButtonStateChanged += OnMouseButtonStateChanged;
+            }
+        }
+
+        public void Show()
+        {
+            if (m_isShown)
+                return;
+
+            m_nonHitTestableWindow.Show();
+            m_window.Show();
+            m_isShown = true;
+            UpdatePositions();
+            m_positionTimer.Start();
+        }
+
+        internal void Hide()
+        {
+            CancelDrag();
+            m_isShown = false;
+            m_positionTimer.Stop();
+            m_nonHitTestableWindow.Hide();
+            m_window.Hide();
+        }
+
+        public void Close()
+        {
+            CancelDrag();
+            m_isShown = false;
+            m_positionTimer.Stop();
+            AnchorSource = null;
+            m_display.Workspace.CursorLocationChanged -= OnCursorLocationChanged;
+            m_display.Workspace.FocusedWindowChanged -= OnFocusedWindowChanged;
+            m_display.Workspace.WindowAdded -= OnWindowAdded;
+            m_display.Workspace.WindowRemoved -= OnWindowRemoved;
+            if (m_mshk != null)
+            {
+                m_mshk.ButtonStateChanged -= OnMouseButtonStateChanged;
+            }
+            Dispatcher.Invoke(() =>
+            {
+                m_nonHitTestableWindow.Visibility = Visibility.Collapsed;
+                m_nonHitTestableWindow.AllowClose = true;
+                m_nonHitTestableWindow.Close();
+                m_window.Visibility = Visibility.Collapsed;
+                m_window.AllowClose = true;
+                m_window.Close();
+            });
+        }
+
+        private bool m_dropPreviewVisible;
+
+        internal void SetDropPreviewVisible(bool visible)
+        {
+            if (m_dropPreviewVisible == visible)
+                return;
+            m_dropPreviewVisible = visible;
+            UpdatePositions();
+        }
+
+        public void UpdatePositions()
+        {
+            if (!m_isShown)
+                return;
+
+            if (m_dropPreviewVisible)
+            {
+                // Keep the click-through preview above the window being dragged, without activating it.
+                var flags = SetWindowPos_uFlags.SWP_NOMOVE | SetWindowPos_uFlags.SWP_NOSIZE | SetWindowPos_uFlags.SWP_NOACTIVATE;
+                PInvoke.SetWindowPos(new(m_nonHitTestableHwnd), new(-1), 0, 0, 0, 0, flags);
+                return;
+            }
+
+            var anchor = AnchorSource != null
+                ? AnchorSource()
+                : new IntPtr(-1);
+
+            // Reorder front .. back (front is drawn on top)
+            // Goal: beforeAnchor -> m_hwnd -> m_nonHitTestableHwnd -> anchor
+            var beforeAnchor = PInvoke.GetWindow(new(anchor), GetWindow_uCmdFlags.GW_HWNDPREV);
+            if (PInvoke.GetWindow(new(m_hwnd), GetWindow_uCmdFlags.GW_HWNDNEXT).Value == beforeAnchor)
+            {
+                return;
+            }
+
+            var swpFlags = SetWindowPos_uFlags.SWP_NOMOVE | SetWindowPos_uFlags.SWP_NOSIZE | SetWindowPos_uFlags.SWP_NOACTIVATE | SetWindowPos_uFlags.SWP_NOSENDCHANGING;
+            if (beforeAnchor.Value == default)
+            {
+                if (PInvoke.IsWindow(new(anchor)))
+                {
+                    PInvoke.SetWindowPos(new(m_hwnd), new(anchor), 0, 0, 0, 0, swpFlags);
+                    PInvoke.SetWindowPos(new(anchor), new(m_hwnd), 0, 0, 0, 0, swpFlags);
+                }
+                else
+                {
+                    PInvoke.SetWindowPos(new(m_hwnd), new(), 0, 0, 0, 0, swpFlags);
+                }
+            }
+            else
+            {
+                PInvoke.SetWindowPos(new(m_hwnd), new(beforeAnchor), 0, 0, 0, 0, swpFlags);
+            }
+        }
+
+        protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+        {
+            base.OnPropertyChanged(e);
+            if (e.Property == ContentProperty)
+            {
+                m_window.SetContent(Content!);
+            }
+            else if (e.Property == NonHitTestableContentProperty)
+            {
+                m_nonHitTestableWindow.SetContent(NonHitTestableContent!);
+            }
+        }
+
+        private static void EnableWindow(IntPtr hwnd)
+        {
+            var oldValue = PInvoke.GetWindowLong(new(hwnd), GetWindowLongPtr_nIndex.GWL_STYLE);
+            var newValue = oldValue & ~(int)WINDOWS_STYLE.WS_DISABLED;
+            if (oldValue != newValue)
+            {
+                _ = SetWindowLongPtr(new(hwnd), GetWindowLongPtr_nIndex.GWL_STYLE, newValue);
+            }
+        }
+
+        private static void DisableWindow(IntPtr hwnd)
+        {
+            var oldValue = PInvoke.GetWindowLong(new(hwnd), GetWindowLongPtr_nIndex.GWL_STYLE);
+            var newValue = oldValue | (int)WINDOWS_STYLE.WS_DISABLED;
+            if (oldValue != newValue)
+            {
+                _ = SetWindowLongPtr(new(hwnd), GetWindowLongPtr_nIndex.GWL_STYLE, newValue);
+            }
+        }
+
+        private void OnWindowRemoved(object? sender, WindowChangedEventArgs e)
+        {
+            DispatchUpdatePositions();
+        }
+
+        private void OnWindowAdded(object? sender, WindowChangedEventArgs e)
+        {
+            DispatchUpdatePositions();
+        }
+
+        private void OnFocusedWindowChanged(object? sender, FocusedWindowChangedEventArgs e)
+        {
+            DispatchUpdatePositions();
+        }
+
+        internal void BeginDrag(WinMan.Point point, Action<WinMan.Point, bool> update, Action click, Action cancel)
+        {
+            CancelDrag();
+            m_drag = (point, update, click, cancel);
+        }
+
+        private void CancelDrag()
+        {
+            var drag = m_drag;
+            m_drag = null;
+            m_dragMoved = false;
+            drag?.Cancel();
+        }
+
+        private bool HasDragMoved(WinMan.Point point, WinMan.Point start) =>
+            Math.Abs(point.X - start.X) >= System.Windows.SystemParameters.MinimumHorizontalDragDistance * m_display.Scaling ||
+            Math.Abs(point.Y - start.Y) >= System.Windows.SystemParameters.MinimumVerticalDragDistance * m_display.Scaling;
+
+        private void OnMouseButtonStateChanged(object? sender, ref LowLevelMouseHook.ButtonStateChangedEventArgs e)
+        {
+            if (e.Button == LowLevelMouseHook.MouseButton.Left && !e.IsPressed)
+            {
+                var point = new WinMan.Point(e.X, e.Y);
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    if (m_drag is not { } drag)
+                        return;
+
+                    bool moved = m_dragMoved || HasDragMoved(point, drag.Start);
+                    CancelDrag();
+                    if (moved)
+                        drag.Update(point, true);
+                    else
+                        drag.Click();
+                }, System.Windows.Threading.DispatcherPriority.Input);
+            }
+            DispatchUpdatePositions();
+        }
+
+        private void DispatchUpdatePositions()
+        {
+            if (m_isShown)
+            {
+                Dispatcher.BeginInvoke(() => UpdatePositions());
+            }
+        }
+
+        private volatile bool m_isScheduled = false;
+        private void OnCursorLocationChanged(object? sender, CursorLocationChangedEventArgs e)
+        {
+            if (!m_isScheduled)
+            {
+                m_isScheduled = true;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    m_isScheduled = false;
+                    if (!m_isShown)
+                        return;
+
+                    var screenPoint = m_display.Workspace.CursorLocation;
+                    // Track the gesture in screen coordinates: the overlay deliberately does not take foreground activation.
+                    if (m_drag is { } drag && (m_dragMoved || HasDragMoved(screenPoint, drag.Start)))
+                    {
+                        m_dragMoved = true;
+                        drag.Update(screenPoint, false);
+                    }
+
+                    bool wasHit;
+                    try
+                    {
+                        var point = m_window.PointFromScreen(new(screenPoint.X, screenPoint.Y));
+                        wasHit = VisualTreeHelper.HitTest(m_window, point) != null;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // This Visual is not connected to a PresentationSource.
+                        wasHit = false;
+                    }
+
+                    if (wasHit || m_window.IsMouseCaptureWithin)
+                    {
+                        EnableWindow(m_hwnd);
+                    }
+                    else
+                    {
+                        DisableWindow(m_hwnd);
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Background);
+            }
+        }
+    }
+}

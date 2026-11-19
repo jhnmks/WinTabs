@@ -1,0 +1,94 @@
+﻿<UserControl x:Class="wintabs.Controls.TilingOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:wintabs.Controls"
+
+             xmlns:viewmodels="clr-namespace:wintabs.ViewModels"
+             d:DataContext="{d:DesignInstance Type=viewmodels:TilingOverlayViewModel}"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+    <Canvas>
+        <Canvas.Resources>
+            <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        </Canvas.Resources>
+        <ItemsControl ItemsSource="{Binding Path=PanelElements}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <local:TilingPanel
+                        ViewModel="{Binding}"
+                        Visibility="{Binding Path=IsHeaderVisible, Converter={StaticResource BoolToVis}}" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Canvas IsItemsHost="True" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Canvas.Left" Value="{Binding Path=HeaderBounds.Left}" />
+                    <Setter Property="Canvas.Top" Value="{Binding Path=HeaderBounds.Top}" />
+                    <Setter Property="Width" Value="{Binding Path=HeaderBounds.Width}" />
+                    <Setter Property="Height" Value="{Binding Path=HeaderBounds.Height}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
+        </ItemsControl>
+
+        <ItemsControl ItemsSource="{Binding Path=WindowElements}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <local:TilingWindow ViewModel="{Binding}" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Canvas IsItemsHost="True" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Canvas.Left" Value="{Binding Path=ComputedBounds.Left}" />
+                    <Setter Property="Canvas.Top" Value="{Binding Path=ComputedBounds.Top}" />
+                    <Setter Property="Width" Value="{Binding Path=ComputedBounds.Width}" />
+                    <Setter Property="Height" Value="{Binding Path=ComputedBounds.Height}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
+        </ItemsControl>
+        <ItemsControl ItemsSource="{Binding Dividers}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+                <Style TargetType="ContentPresenter">
+                    <Setter Property="Canvas.Left" Value="{Binding Bounds.Left}" />
+                    <Setter Property="Canvas.Top" Value="{Binding Bounds.Top}" />
+                    <Setter Property="Width" Value="{Binding Bounds.Width}" />
+                    <Setter Property="Height" Value="{Binding Bounds.Height}" />
+                </Style>
+            </ItemsControl.ItemContainerStyle>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Thumb Cursor="{Binding Cursor}" Focusable="False" ToolTip="Resize tab groups"
+                           AutomationProperties.Name="Resize tab groups" DragStarted="OnDividerDragStarted"
+                           DragCompleted="OnDividerDragCompleted">
+                        <Thumb.Template>
+                            <ControlTemplate TargetType="Thumb">
+                                <Border Background="Transparent" x:Name="Grip" />
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Grip" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsDragging" Value="True">
+                                        <Setter TargetName="Grip" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Thumb.Template>
+                    </Thumb>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Canvas>
+</UserControl>

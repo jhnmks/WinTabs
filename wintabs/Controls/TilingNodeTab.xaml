@@ -1,0 +1,115 @@
+﻿<UserControl x:Class="wintabs.Controls.TilingNodeTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:wintabs.Controls"
+             xmlns:viewmodels="clr-namespace:wintabs.ViewModels"
+             d:DataContext="{d:DesignInstance Type=viewmodels:TilingNodeViewModel}"
+             mc:Ignorable="d"
+             d:DesignHeight="18" d:DesignWidth="64">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <Style TargetType="{x:Type Button}" x:Key="TabButton">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Opacity" Value="0.55" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Border CornerRadius="{DynamicResource ControlCornerRadius}" Background="{TemplateBinding Background}" />
+                                <Border x:Name="ActiveFill" CornerRadius="{DynamicResource ControlCornerRadius}"
+                                        Background="{Binding Overlay.FocusBorderBrush}" Visibility="Collapsed" IsHitTestVisible="False" />
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsActiveTab}" Value="True">
+                                    <Setter TargetName="ActiveFill" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
+                <Setter Property="TextBlock.Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Opacity" Value="0.8" />
+                        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                    </Trigger>
+                    <DataTrigger Binding="{Binding IsActiveTab}" Value="True">
+                        <Setter Property="Opacity" Value="1" />
+                        <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+        <Grid.InputBindings>
+            <MouseBinding
+                MouseAction="MiddleClick"
+                Command="{Binding CloseCommand}"
+                CommandParameter="{Binding}" />
+        </Grid.InputBindings>
+        <Button HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Style="{StaticResource TabButton}" BorderThickness="0" Padding="0"
+                        Command="{Binding PrimaryActionCommand}" CommandParameter="{Binding}">
+            <Button.ContextMenu>
+                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                    <MenuItem Header="Tile left" Command="{Binding SplitTabCommand}" CommandParameter="Left" />
+                    <MenuItem Header="Tile right" Command="{Binding SplitTabCommand}" CommandParameter="Right" />
+                    <MenuItem Header="Tile above" Command="{Binding SplitTabCommand}" CommandParameter="Up" />
+                    <MenuItem Header="Tile below" Command="{Binding SplitTabCommand}" CommandParameter="Down" />
+                </ContextMenu>
+            </Button.ContextMenu>
+            <Button.ToolTip>
+                <StackPanel>
+                    <local:TilingNodeCaptionBlock HorizontalAlignment="Left" TextBlock.FontWeight="Bold" DataContext="{Binding}" />
+                    <TextBlock>
+                        • <Run Text="Single click to focus" />
+                    </TextBlock>
+                </StackPanel>
+            </Button.ToolTip>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Width="{Binding Overlay.IconSize}" Margin="0,0,4,0" />
+                <TextBlock Grid.Column="1" Text="{Binding AppName}" FontSize="{Binding Overlay.FontSize}"
+                           TextAlignment="Center" VerticalAlignment="Center" />
+                <Border Grid.Column="2" Width="{Binding Overlay.IconSize}" Margin="4,0,0,0" />
+            </Grid>
+        </Button>
+        <Button HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                Width="{Binding Overlay.IconSize}" Padding="0" Focusable="False"
+                ToolTip="Close" AutomationProperties.Name="Close"
+                Command="{Binding CloseCommand}" CommandParameter="{Binding}">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Visibility" Value="Hidden" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="#C42B1C" CornerRadius="2">
+                                    <Viewbox Margin="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Path Data="M 0,0 L 8,8 M 8,0 L 0,8" Stroke="White" StrokeThickness="1.5" />
+                                    </Viewbox>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=local:TilingNodeTab}}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+    </Grid>
+</UserControl>
