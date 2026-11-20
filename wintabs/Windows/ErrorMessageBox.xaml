@@ -48,7 +48,7 @@
                             <TextBlock Margin="0,2,0,0" VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" Text="&#xE70D;" FontSize="12" />
                         </StackPanel>
                     </Button>
-                    <Button Grid.Column="2" Margin="4,0" Click="OnViewLogButtonClick" Style="{StaticResource AccentButtonStyle}">
+                    <Button Grid.Column="2" Margin="4,0" Click="OnViewLogButtonClick">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="View log" />
                             <TextBlock Margin="5,2,0,0" FontSize="12" FontFamily="Segoe MDL2 Assets" Text="&#xE898;" />

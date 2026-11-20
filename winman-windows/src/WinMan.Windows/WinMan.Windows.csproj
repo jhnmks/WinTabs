@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
 
     <CetCompat>false</CetCompat>
 
@@ -23,8 +23,6 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
-
-    <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
 
     <Version>1.0.1</Version>
   </PropertyGroup>

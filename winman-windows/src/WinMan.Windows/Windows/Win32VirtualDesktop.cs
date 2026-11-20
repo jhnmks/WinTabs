@@ -11,7 +11,6 @@ namespace WinMan.Windows
         private readonly Win32Workspace m_workspace;
         private readonly IWin32VirtualDesktopService m_vds;
         private readonly Desktop m_desktop;
-        private readonly IntPtr m_hMon;
 
         public event EventHandler<DesktopChangedEventArgs>? Removed;
 
@@ -30,7 +29,7 @@ namespace WinMan.Windows
             {
                 try
                 {
-                    return m_vds.IsCurrentDesktop(m_hMon, m_desktop);
+                    return m_vds.IsCurrentDesktop(m_desktop.Monitor, m_desktop);
                 }
                 catch (COMException)
                 {
@@ -45,11 +44,11 @@ namespace WinMan.Windows
             {
                 try
                 {
-                    return m_vds.GetDesktopIndex(m_hMon, m_desktop);
+                    return m_vds.GetDesktopIndex(m_desktop.Monitor, m_desktop);
                 }
                 catch (COMException)
                 {
-                    return m_vds.GetDesktopCount(m_hMon) - 1;
+                    return m_vds.GetDesktopCount(m_desktop.Monitor) - 1;
                 }
             }
         }
@@ -64,7 +63,7 @@ namespace WinMan.Windows
                 }
                 catch (COMException)
                 {
-                    return $"Desktop {m_vds.GetDesktopCount(m_hMon) - 1}";
+                    return $"Desktop {m_vds.GetDesktopCount(m_desktop.Monitor) - 1}";
                 }
             }
         }
@@ -87,7 +86,7 @@ namespace WinMan.Windows
 
         public void SwitchTo()
         {
-            m_vds.SwitchToDesktop(m_hMon, m_desktop);
+            m_vds.SwitchToDesktop(m_desktop.Monitor, m_desktop);
         }
 
         public override bool Equals(object? obj)

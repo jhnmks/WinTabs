@@ -24,7 +24,6 @@ SHGetFileInfo
 PeekMessage
 SendInput
 GetQueueStatus
-GetPackageFamilyName
 FindWindowEx
 IsWindow
 GetWindowRect
@@ -44,8 +43,7 @@ WM_MBUTTONDOWN
 WM_MBUTTONUP
 HC_ACTION
 VK_MENU
-GWL_EXSTYLE
-WS_EX_TOPMOST
+GetWindowLongPtr_nIndex
 
 MSLLHOOKSTRUCT
 KBDLLHOOKSTRUCT

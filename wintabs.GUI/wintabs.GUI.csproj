@@ -5,7 +5,7 @@
     <TargetFramework>net10.0-windows10.0.18362.0</TargetFramework>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>..\wintabs\Icon4.ico</ApplicationIcon>
+    <ApplicationIcon>..\wintabs\Resources\Icon.ico</ApplicationIcon>
     <Product>WinTabs</Product>
     <AssemblyTitle>WinTabs</AssemblyTitle>
     <Copyright>Copyright 2024 Vesko Karaganev</Copyright>

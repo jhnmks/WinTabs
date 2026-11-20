@@ -6,7 +6,6 @@ using System.Security.Principal;
 using System.Text.Json;
 using System.Runtime.InteropServices;
 using System;
-using System.Runtime.Serialization;
 
 namespace WinMan.Windows.Com
 {
@@ -27,10 +26,6 @@ namespace WinMan.Windows.Com
         }
 
         public ComExceptionWithDiagnostics(string? message, int errorCode) : base(message, errorCode)
-        {
-        }
-
-        protected ComExceptionWithDiagnostics(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
 

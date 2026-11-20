@@ -22,7 +22,7 @@ namespace wintabs.Pages.Settings
 
         private void OpenInExplorerButtonClick(object sender, RoutedEventArgs e)
         {
-            var path = App.Current.GetRealPath(m_viewModel.Model.FullPath);
+            var path = m_viewModel.Model.FullPath;
             Process.Start("explorer.exe", $"/select,\"{path}\"");
         }
     }

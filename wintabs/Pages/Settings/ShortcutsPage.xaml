@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wtc="clr-namespace:wintabs.Controls"
+             xmlns:models="clr-namespace:wintabs.Models"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
@@ -9,103 +10,76 @@
     <UserControl.Resources>
         <Style x:Key="Key" TargetType="Border" BasedOn="{StaticResource KeyChipStyle}">
             <Setter Property="Padding" Value="8,3" />
-            <Setter Property="Margin" Value="0,0,4,0" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style x:Key="Plus" TargetType="TextBlock">
-            <Setter Property="Margin" Value="0,0,4,0" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-        </Style>
+        <CollectionViewSource x:Key="Grouped" Source="{x:Static models:ShortcutCatalog.All}">
+            <CollectionViewSource.GroupDescriptions>
+                <PropertyGroupDescription PropertyName="Section" />
+            </CollectionViewSource.GroupDescriptions>
+        </CollectionViewSource>
     </UserControl.Resources>
     <wtc:SpacedStackPanel MaxWidth="1000" Margin="{StaticResource SettingsPageMargin}" Spacing="4">
         <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SettingsPageTitleStyle}" />
-        <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Margin="2,0,0,8" TextWrapping="Wrap"
-                   Text="These shortcuts work anywhere in Windows while WinTabs is running. Changing them will be possible in a future version." />
 
-        <TextBlock Text="Tab groups" Style="{StaticResource SettingsSectionStyle}" />
         <Border Style="{StaticResource SettingsItemStyle}">
             <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16,0,0,0">
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Ctrl" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Win" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="← ↑ → ↓" /></Border>
-                </StackPanel>
+                <Button DockPanel.Dock="Right" Margin="16,0,0,0" VerticalAlignment="Center" Content="Show cheat sheet" Click="OnShowCheatSheet" />
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Focus a neighbouring group" />
+                    <TextBlock Text="These shortcuts work anywhere in Windows while WinTabs is running." TextWrapping="Wrap" />
                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                               Text="Jumps to the closest tab group on screen in the direction of the arrow." />
-                </StackPanel>
-            </DockPanel>
-        </Border>
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16,0,0,0">
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Win" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Shift" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="← ↑ → ↓" /></Border>
-                </StackPanel>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Tile the tab beside its group" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                               Text="Splits the active tab off into a new group on that side, the same as Tile left/right/above/below in the tab's right-click menu." />
+                               Text="Press Ctrl + Win + / at any time for a quick reference. Changing the shortcuts will be possible in a future version." />
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <TextBlock Text="Tabs" Style="{StaticResource SettingsSectionStyle}" />
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16,0,0,0">
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Ctrl" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="← →" /></Border>
-                </StackPanel>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Switch to the previous or next tab" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                               Text="Cycles through the tabs of the focused group. Wraps around at the ends." />
-                </StackPanel>
-            </DockPanel>
-        </Border>
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16,0,0,0">
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Ctrl" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Shift" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="← →" /></Border>
-                </StackPanel>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Move the tab left or right" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                               Text="Shifts the active tab one position within its group." />
-                </StackPanel>
-            </DockPanel>
-        </Border>
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16,0,0,0">
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Ctrl" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="Shift" /></Border>
-                    <TextBlock Style="{StaticResource Plus}" Text="+" />
-                    <Border Style="{StaticResource Key}"><TextBlock Text="1 – 9" /></Border>
-                </StackPanel>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Send the tab to a numbered group" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                               Text="Moves the active tab to the end of the group with that number, shown in the red badge on each tab bar." />
-                </StackPanel>
-            </DockPanel>
-        </Border>
+        <ItemsControl ItemsSource="{Binding Source={StaticResource Grouped}}">
+            <ItemsControl.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" Style="{StaticResource SettingsSectionStyle}" />
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+            </ItemsControl.GroupStyle>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type models:ShortcutInfo}">
+                    <Border Style="{StaticResource SettingsItemStyle}" Margin="0,2">
+                        <DockPanel>
+                            <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Keys}" Margin="16,0,0,0" VerticalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="Plus" Text="+" Margin="4,0" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            <Border Style="{StaticResource Key}">
+                                                <TextBlock Text="{Binding}" />
+                                            </Border>
+                                        </StackPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
+                                                <Setter TargetName="Plus" Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Text="{Binding Description}" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
         <TextBlock Text="Mouse" Style="{StaticResource SettingsSectionStyle}" />
         <Border Style="{StaticResource SettingsItemStyle}">

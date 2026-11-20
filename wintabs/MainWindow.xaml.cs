@@ -344,6 +344,7 @@ namespace wintabs
                 TabShortcut.CycleTab => "switch tabs",
                 TabShortcut.MoveTabToGroup => $"move the tab to group {command.GroupNumber}",
                 TabShortcut.TileTab => "tile the tab",
+                TabShortcut.CheatSheet => "show the shortcuts",
                 _ => "move the tab",
             };
             m_logger.Debug("Shortcut {Command}", command);
@@ -372,11 +373,22 @@ namespace wintabs
                     case TabShortcut.TileTab:
                         m_tiling.TileTab(command.Direction);
                         break;
+                    case TabShortcut.CheatSheet:
+                        ShowCheatSheet();
+                        break;
                 }
             }
             catch (TilingFailedException e)
             {
                 await HandleCommandExceptionAsync(e, friendlyActionName);
+            }
+            catch (Exception e) when (e is InvalidOperationException or ArgumentException or InvalidReferenceException
+                or System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException)
+            {
+                // A shortcut must never take WinTabs down; report it and keep running.
+                m_logger.Error(e, "Shortcut {Command} failed", command);
+                PlayBeepSound();
+                await ShowToastAsync($"Could not {friendlyActionName}", e.Message, ToastDurationLong);
             }
         }
 
@@ -455,6 +467,25 @@ namespace wintabs
         {
             m_contextMenu.IsOpen = false;
             OpenSettings();
+        }
+
+        private void ShowCheatSheet()
+        {
+            var foreground = m_workspace.FocusedWindow;
+            var display = foreground == null ? null
+                : m_workspace.DisplayManager.Displays.FirstOrDefault(d => d.Bounds.Contains(foreground.Position.Center));
+            CheatSheetWindow.Toggle(display ?? m_workspace.DisplayManager.PrimaryDisplay);
+        }
+
+        internal static void ShowCheatSheetFromUi()
+        {
+            App.Current.Windows.OfType<MainWindow>().FirstOrDefault()?.ShowCheatSheet();
+        }
+
+        private void OnShortcutsClick(object? sender, RoutedEventArgs e)
+        {
+            m_contextMenu.IsOpen = false;
+            ShowCheatSheet();
         }
 
         private void OnExitClick(object? sender, RoutedEventArgs e)

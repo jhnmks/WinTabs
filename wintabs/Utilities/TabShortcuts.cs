@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 
 using wintabs.Layouts.Tiling;
@@ -12,6 +12,7 @@ namespace wintabs.Utilities
         MoveTab,
         MoveTabToGroup,
         TileTab,
+        CheatSheet,
     }
 
     internal readonly record struct TabShortcutCommand(TabShortcut Shortcut, TilingDirection Direction = default, int GroupNumber = 0);
@@ -24,6 +25,7 @@ namespace wintabs.Utilities
     /// <item>Ctrl + Shift + arrow: move the focused tab one position within its group.</item>
     /// <item>Ctrl + Shift + 1-9: move the focused tab to the end of that numbered group.</item>
     /// <item>Win + Shift + arrow: tile the focused tab beside its group in that direction.</item>
+    /// <item>Ctrl + Win + /: show or hide the shortcuts cheat sheet.</item>
     /// </list>
     /// </summary>
     internal sealed class TabShortcuts : IDisposable
@@ -82,6 +84,9 @@ namespace wintabs.Utilities
                     _ => null,
                 };
             }
+
+            if (key == KeyCode.OemQuestion && ctrl && win && !shift)
+                return new(TabShortcut.CheatSheet);
 
             if (ctrl && shift && !win && ToGroupNumber(key) is int groupNumber)
                 return new(TabShortcut.MoveTabToGroup, GroupNumber: groupNumber);

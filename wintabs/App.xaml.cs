@@ -36,30 +36,6 @@ namespace wintabs
 
         internal ILogger Logger { get; }
 
-        internal string? PackageFamilyName
-        {
-            get
-            {
-                unsafe
-                {
-                    uint cBytes = 256;
-                    char[] buffer = new char[256];
-                    fixed (char* ptr = buffer)
-                    {
-                        var err = DllImports.PInvoke.GetPackageFamilyName(new(Process.GetCurrentProcess().Handle), &cBytes, new(ptr));
-                        if (err == 0)
-                        {
-                            return new string(ptr);
-                        }
-                        else
-                        {
-                            return null;
-                        }
-                    }
-                }
-            }
-        }
-
         public bool RestartOnClose { get; internal set; }
 
         private App()
@@ -72,21 +48,6 @@ namespace wintabs
             Services = services;
             Logger = services.GetRequiredService<ILogger>();
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-        }
-
-        internal string GetRealPath(string path)
-        {
-            if (PackageFamilyName is String pfn)
-            {
-                var appDataPath = Path.GetDirectoryName(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData))!;
-                var packagedAppDataPath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Packages",
-                    pfn,
-                    "LocalCache");
-                return path.Replace(appDataPath, packagedAppDataPath);
-            }
-            return path;
         }
 
         internal void Terminate()
@@ -139,6 +100,15 @@ namespace wintabs
                 exception = innerException;
             }
 
+            // Log before anything else can fail, so the cause is never lost.
+            try
+            {
+                Logger.Fatal(exception, "Unhandled exception");
+            }
+            catch (Exception)
+            {
+            }
+
             // Special case for COMException: We do not show a dialog for 
             // this type of exception when explorer.exe is closed. This is because
             // explorer.exe is what most-likely caused the crash in the first place.
@@ -147,11 +117,19 @@ namespace wintabs
                 exception = new COMException($"Windows Explorer (explorer.exe) just crashed and this caused the virtual desktop service to fail! WinTabs received the following error message: {exception.Message}", exception);
             }
 
-            // Show error dialog
-            var result = ShowDialogOnBackgroundThread(() => new ErrorMessageBox()
+            // Show error dialog. It must never take the process down on its own.
+            bool? result = null;
+            try
             {
-                ExceptionObject = exception
-            }).Result;
+                result = ShowDialogOnBackgroundThread(() => new ErrorMessageBox()
+                {
+                    ExceptionObject = exception
+                }).Result;
+            }
+            catch (Exception dialogException)
+            {
+                Logger.Error(dialogException, "Could not show the error dialog");
+            }
 
             // View log file
             if (result == true)
@@ -173,7 +151,6 @@ namespace wintabs
             // Try to write logs
             try
             {
-                Logger.Fatal("{Exception}", exception);
                 if (closingException != null)
                 {
                     Logger.Error("{Exception}", closingException);

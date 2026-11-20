@@ -1,3 +1,5 @@
+﻿#nullable enable
+
 using System.Windows.Input;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;

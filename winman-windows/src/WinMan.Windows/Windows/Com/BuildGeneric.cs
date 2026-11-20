@@ -143,8 +143,6 @@ namespace WinMan.Windows.Com.BuildGeneric
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int SwitchDesktopFn(IntPtr instance, IntPtr desktop);
 
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int SwitchDesktopPerMonFn(IntPtr instance, IntPtr hWndOrMon, IntPtr desktop);
 
         private readonly GetCountFn? m_getCount;
         private readonly GetCountPerMonFn? m_getCountPerMon;
@@ -155,7 +153,6 @@ namespace WinMan.Windows.Com.BuildGeneric
         private readonly GetDesktopsFn? m_getDesktops;
         private readonly GetDesktopsPerMonFn? m_getDesktopsPerMon;
         private readonly SwitchDesktopFn? m_switchDesktop;
-        private readonly SwitchDesktopPerMonFn? m_switchDesktopPerMon;
 
         public VirtualDesktopManagerInternalVTable(IntPtr pInterface)
         {
@@ -222,7 +219,7 @@ namespace WinMan.Windows.Com.BuildGeneric
 
         public int SwitchDesktop(IntPtr instance, IntPtr hWndOrMon, IntPtr desktop)
         {
-            return m_switchDesktop != default ? m_switchDesktop(instance, desktop) : m_switchDesktopPerMon!(instance, hWndOrMon, desktop);
+            return m_switchDesktop!(instance, desktop);
         }
     }
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 
@@ -22,6 +23,8 @@ namespace WinMan.Windows
             Connect();
         }
 
+        [MemberNotNull(nameof(VirtualDesktopManagerInternal), nameof(VirtualDesktopManager),
+            nameof(ApplicationViewCollection), nameof(VirtualDesktopPinnedApps))]
         public void Connect()
         {
             var shell = (IComServiceProvider10?)Activator.CreateInstance(Type.GetTypeFromCLSID(ComGuids.CLSID_ImmersiveShell, true)!)
