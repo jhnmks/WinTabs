@@ -173,6 +173,7 @@ namespace wintabs
 
             m_display.ScalingChanged += OnDisplayScalingChanged;
             m_display.WorkAreaChanged += OnDisplayWorkAreaChanged;
+            GroupNumbers.Renumbered += OnGroupsRenumbered;
             m_display.BoundsChanged += OnDisplayWorkAreaChanged;
             m_workspace.CursorLocationChanged += OnNativeDragCursorChanged;
 
@@ -263,41 +264,18 @@ namespace wintabs
             }
         }
 
-        public bool CanMoveFocus(TilingDirection direction)
-        {
-            using (m_backendLock.EnterScope())
-            {
-                return m_backend.GetAdjacentGroupTab(m_workspace.VirtualDesktopManager.CurrentDesktop, direction) != null;
-            }
-        }
-
-        public void MoveFocus(TilingDirection direction)
-        {
-            using (m_backendLock.EnterScope())
-            {
-                var tab = m_backend.GetAdjacentGroupTab(m_workspace.VirtualDesktopManager.CurrentDesktop, direction)
-                    ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
-                if (FocusHelper.ForceActivate(tab.WindowReference.Handle))
-                {
-                    m_backend.SetFocus(tab);
-                }
-            }
-
-            InvalidateLayout();
-        }
-
         public void CycleTab(int offset)
         {
+            WindowNode tab;
             using (m_backendLock.EnterScope())
             {
-                var tab = m_backend.GetCycledTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset)
+                SyncFocusToForeground();
+                tab = m_backend.GetCycledTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset)
                     ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
-                if (FocusHelper.ForceActivate(tab.WindowReference.Handle))
-                {
-                    m_backend.SetFocus(tab);
-                }
+                SetShortcutFocus(tab);
             }
 
+            FocusHelper.ForceActivate(tab.WindowReference.Handle);
             InvalidateLayout();
         }
 
@@ -306,6 +284,7 @@ namespace wintabs
             WindowNode? tab;
             using (m_backendLock.EnterScope())
             {
+                SyncFocusToForeground();
                 tab = m_backend.GetFocus(m_workspace.VirtualDesktopManager.CurrentDesktop) as WindowNode
                     ?? throw new TilingFailedException(TilingError.MissingTarget);
             }
@@ -316,6 +295,7 @@ namespace wintabs
         {
             using (m_backendLock.EnterScope())
             {
+                SyncFocusToForeground();
                 if (!m_backend.MoveFocusedTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset))
                     return;
             }
@@ -495,6 +475,7 @@ namespace wintabs
 
             m_display.ScalingChanged -= OnDisplayScalingChanged;
             m_display.WorkAreaChanged -= OnDisplayWorkAreaChanged;
+            GroupNumbers.Renumbered -= OnGroupsRenumbered;
             m_display.BoundsChanged -= OnDisplayWorkAreaChanged;
             m_workspace.CursorLocationChanged -= OnNativeDragCursorChanged;
 
@@ -508,44 +489,9 @@ namespace wintabs
             }
         }
 
-        public IWindow? GetFocus()
-        {
-            using (m_backendLock.EnterScope())
-            {
-                var focusedNode = m_backend.GetFocus(m_workspace.VirtualDesktopManager.CurrentDesktop);
-                if (focusedNode is not WindowNode focusedWindow)
-                    return null;
-
-                return focusedWindow.WindowReference;
-            }
-        }
-
         public Rectangle GetBounds()
         {
             return m_display.Bounds;
-        }
-
-        public IWindow? FindClosest(Point center)
-        {
-            static double Distance(Point point1, Point point2)
-            {
-                return Math.Pow(point1.X - point2.X, 2) + Math.Pow(point1.Y - point2.Y, 2);
-            }
-
-            using (m_backendLock.EnterScope())
-            {
-                var tree = m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop);
-                var closestNode = tree!.Root!.Windows
-                    .OrderBy(x => Distance(center, x.ComputedRectangle.Center))
-                    .FirstOrDefault();
-
-                if (closestNode != null)
-                {
-                    return closestNode.WindowReference;
-                }
-            }
-
-            return null;
         }
     }
 }

@@ -99,6 +99,10 @@ namespace wintabs.Utilities
                 m_lastActiveTimestamp = DateTime.UtcNow;
 
                 var kbhs = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+                // Keys WinTabs injects itself (focus unlock, Start menu suppression) are not user input.
+                if (kbhs.dwExtraInfo == FocusHelper.InjectedInputTag)
+                    return PInvoke.CallNextHookEx(new HHOOK(), code, wParam, lParam);
+
                 KeyCode keyCode = (KeyCode)kbhs.vkCode;
                 bool isPressed = (kbhs.flags & LLKHF_UP) == 0;
                 var e = new KeyStateChangedEventArgs(keyCode, isPressed);

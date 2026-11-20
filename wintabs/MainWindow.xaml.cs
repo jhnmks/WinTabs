@@ -340,7 +340,6 @@ namespace wintabs
         {
             string friendlyActionName = command.Shortcut switch
             {
-                TabShortcut.FocusGroup => "focus the next tab group",
                 TabShortcut.CycleTab => "switch tabs",
                 TabShortcut.MoveTabToGroup => $"move the tab to group {command.GroupNumber}",
                 TabShortcut.TileTab => "tile the tab",
@@ -353,9 +352,6 @@ namespace wintabs
             {
                 switch (command.Shortcut)
                 {
-                    case TabShortcut.FocusGroup:
-                        m_tiling.MoveFocus(command.Direction);
-                        break;
                     case TabShortcut.CycleTab:
                         m_tiling.CycleTab(offset);
                         break;

@@ -11,32 +11,55 @@
         ShowInTaskbar="False"
         ShowActivated="True"
         SizeToContent="WidthAndHeight"
+        Opacity="0"
         FontSize="14"
         Foreground="{DynamicResource TextFillColorPrimaryBrush}">
     <Window.Resources>
-        <Style x:Key="Key" TargetType="Border" BasedOn="{StaticResource KeyChipStyle}">
-            <Setter Property="Padding" Value="8,3" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
+        <CollectionViewSource x:Key="Grouped" Source="{x:Static models:ShortcutCatalog.All}">
+            <CollectionViewSource.GroupDescriptions>
+                <PropertyGroupDescription PropertyName="Section" />
+            </CollectionViewSource.GroupDescriptions>
+        </CollectionViewSource>
     </Window.Resources>
 
     <!-- Margin leaves room for the drop shadow inside the transparent window. -->
-    <Border Margin="24" Padding="24,20" MinWidth="520" CornerRadius="8"
+    <Border Margin="24" Padding="24,20,24,16" MinWidth="520" CornerRadius="8"
             Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
             BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
         <Border.Effect>
             <DropShadowEffect BlurRadius="24" ShadowDepth="4" Direction="-90" Opacity="0.25" Color="Black" />
         </Border.Effect>
         <StackPanel>
-            <DockPanel Margin="0,0,0,12">
+            <DockPanel Margin="0,0,0,4">
                 <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Style="{StaticResource SettingsDescriptionStyle}" Margin="16,0,0,0"
                            Text="Esc to close" />
                 <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold" />
             </DockPanel>
 
-            <ItemsControl x:Name="Shortcuts" Grid.IsSharedSizeScope="True">
+            <ItemsControl ItemsSource="{Binding Source={StaticResource Grouped}}" Grid.IsSharedSizeScope="True" Focusable="False">
+                <ItemsControl.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.ContainerStyle>
+                            <Style TargetType="GroupItem">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="GroupItem">
+                                            <StackPanel Margin="0,12,0,0">
+                                                <TextBlock Text="{Binding Name}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6" />
+                                                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                                        CornerRadius="6" Padding="12,4">
+                                                    <ItemsPresenter />
+                                                </Border>
+                                            </StackPanel>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </GroupStyle.ContainerStyle>
+                    </GroupStyle>
+                </ItemsControl.GroupStyle>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:ShortcutInfo}">
                         <Grid Margin="0,5">
@@ -44,29 +67,7 @@
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="Keys" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <ItemsControl ItemsSource="{Binding Keys}" Margin="0,0,20,0" VerticalAlignment="Center">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock x:Name="Plus" Text="+" Margin="4,0" VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                            <Border Style="{StaticResource Key}">
-                                                <TextBlock Text="{Binding}" />
-                                            </Border>
-                                        </StackPanel>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
-                                                <Setter TargetName="Plus" Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <ContentPresenter Content="{Binding Keys}" ContentTemplate="{StaticResource KeyComboTemplate}" Margin="0,0,24,0" />
                             <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" />
                         </Grid>
                     </DataTemplate>

@@ -296,8 +296,12 @@ namespace wintabs
             m_originalPositions.Remove(window);
         }
 
+        /// <summary>
+        /// Splits <paramref name="tab"/> off into a new group beside its own. A tab that is alone in its
+        /// group has nothing to split from, so this refuses and leaves the layout untouched.
+        /// </summary>
         public bool SplitTab(WindowNode tab, TilingDirection direction) =>
-            tab.Parent is StackPanelNode group && SplitTabBeside(tab, group, direction);
+            tab.Parent is StackPanelNode group && group.Children.Count > 1 && SplitTabBeside(tab, group, direction);
 
         private bool SplitTabBeside(WindowNode tab, StackPanelNode target, TilingDirection direction)
         {
@@ -392,12 +396,30 @@ namespace wintabs
                 return null;
 
             var window = tab.WindowReference;
+            if (destination.HasWindow(window))
+                return null;
+
             var original = m_originalPositions.GetValueOrDefault(window, window.Position);
+            int index = source.IndexOf(tab);
             UnregisterWindow(window);
-            var moved = destination.RegisterWindow(window, target);
-            destination.m_originalPositions[window] = original;
-            destination.SetFocus(moved);
-            return moved;
+            try
+            {
+                var moved = destination.RegisterWindow(window, target);
+                destination.m_originalPositions[window] = original;
+                destination.SetFocus(moved);
+                return moved;
+            }
+            catch (Exception)
+            {
+                // Never lose the tab: put it back where it was.
+                if (source.Desktop != null)
+                {
+                    var restored = new WindowNode(window);
+                    source.Attach(Math.Min(index, source.Children.Count), restored);
+                    m_originalPositions[window] = original;
+                }
+                throw;
+            }
         }
 
         public bool TransferTabGroup(StackPanelNode group, TilingWorkspace destination, IVirtualDesktop desktop)
@@ -923,39 +945,6 @@ namespace wintabs
                 throw new ArgumentException("Desktop not registered with backend!");
 
             return state.FocusedNode;
-        }
-
-        /// <summary>
-        /// The selected tab of the nearest tab group in <paramref name="direction"/> from the focused group,
-        /// judged by on-screen position.
-        /// </summary>
-        public WindowNode? GetAdjacentGroupTab(IVirtualDesktop currentDesktop, TilingDirection direction)
-        {
-            if (GetFocus(currentDesktop) is not { Parent: StackPanelNode source } || source.Desktop?.Root is not PanelNode root)
-                return null;
-
-            var from = GetGroupBounds(source).Center;
-            return root.Nodes.OfType<StackPanelNode>()
-                .Where(group => group != source && group.SelectedTab != null)
-                .Select(group => (Group: group, Center: GetGroupBounds(group).Center))
-                .Where(x => direction switch
-                {
-                    TilingDirection.Left => x.Center.X < from.X,
-                    TilingDirection.Right => x.Center.X > from.X,
-                    TilingDirection.Up => x.Center.Y < from.Y,
-                    _ => x.Center.Y > from.Y,
-                })
-                .OrderBy(x =>
-                {
-                    long along = direction is TilingDirection.Left or TilingDirection.Right
-                        ? Math.Abs(x.Center.X - from.X) : Math.Abs(x.Center.Y - from.Y);
-                    long across = direction is TilingDirection.Left or TilingDirection.Right
-                        ? Math.Abs(x.Center.Y - from.Y) : Math.Abs(x.Center.X - from.X);
-                    // Prefer groups that line up with the current one over diagonal neighbours.
-                    return along + 2 * across;
-                })
-                .Select(x => x.Group.SelectedTab)
-                .FirstOrDefault();
         }
 
         /// <summary>

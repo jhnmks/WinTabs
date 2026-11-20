@@ -331,29 +331,6 @@ namespace wintabs.Tests
         }
 
         [TestMethod]
-        public void CtrlWinArrowFocusesTheNeighbouringGroup()
-        {
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            var tree = workspace.GetTree(desktop)!;
-            var left = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
-            var right = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
-            tree.Arrange();
-            Assert.IsTrue(workspace.SplitTab(right, TilingDirection.Right));
-            tree.Measure();
-            tree.Arrange();
-
-            workspace.SetFocus(left);
-            Assert.IsNull(workspace.GetAdjacentGroupTab(desktop, TilingDirection.Left));
-            Assert.AreSame(right, workspace.GetAdjacentGroupTab(desktop, TilingDirection.Right));
-            Assert.IsNull(workspace.GetAdjacentGroupTab(desktop, TilingDirection.Up));
-
-            workspace.SetFocus(right);
-            Assert.AreSame(left, workspace.GetAdjacentGroupTab(desktop, TilingDirection.Left));
-        }
-
-        [TestMethod]
         public void CtrlArrowCyclesTabsAndWraps()
         {
             var workspace = new TilingWorkspace(tabsOnly: true);
@@ -422,6 +399,67 @@ namespace wintabs.Tests
         }
 
         [TestMethod]
+        public void ALoneTabRefusesToSplitAndKeepsTheLayout()
+        {
+            var workspace = new TilingWorkspace(tabsOnly: true);
+            var desktop = m_desktopFactory.CreateVirtualDesktop();
+            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var tree = workspace.GetTree(desktop)!;
+            var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            tree.Arrange();
+            Assert.IsTrue(workspace.SplitTab(b, TilingDirection.Right));
+            var split = tree.Root;
+            var lonely = (StackPanelNode)b.Parent!;
+            workspace.SetFocus(b);
+
+            foreach (var direction in new[] { TilingDirection.Left, TilingDirection.Right, TilingDirection.Up, TilingDirection.Down })
+            {
+                Assert.IsFalse(workspace.SplitTab(b, direction), direction.ToString());
+                Assert.AreSame(lonely, b.Parent);
+                Assert.AreSame(split, tree.Root);
+                Assert.AreSame(b, workspace.GetFocus(desktop));
+            }
+
+            // The only window on a desktop cannot split either.
+            var solo = new TilingWorkspace(tabsOnly: true);
+            var soloDesktop = m_desktopFactory.CreateVirtualDesktop();
+            solo.RegisterDesktop(soloDesktop, m_workarea, PanelOrientation.Horizontal);
+            var only = solo.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            solo.GetTree(soloDesktop)!.Arrange();
+            Assert.IsFalse(solo.SplitTab(only, TilingDirection.Right));
+        }
+
+        [TestMethod]
+        public void TransferFocusedTabMovesItToAnotherDisplaysGroup()
+        {
+            var desktop = m_desktopFactory.CreateVirtualDesktop();
+            var left = new TilingWorkspace(tabsOnly: true);
+            var right = new TilingWorkspace(tabsOnly: true);
+            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var moving = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var staying = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var resident = right.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var target = (StackPanelNode)resident.Parent!;
+
+            left.SetFocus(moving);
+            var moved = left.TransferFocusedTab(desktop, right, target);
+
+            Assert.IsNotNull(moved);
+            Assert.IsFalse(left.HasWindow(moving.WindowReference));
+            Assert.IsTrue(left.HasWindow(staying.WindowReference));
+            Assert.AreSame(target, moved!.Parent);
+            Assert.AreSame(moved, target.Children[^1]);
+            Assert.AreSame(moved, right.GetFocus(desktop));
+
+            // Moving it again to where it already is does nothing and loses nothing.
+            right.SetFocus(moved);
+            Assert.IsNull(right.TransferFocusedTab(desktop, right, target));
+            Assert.IsTrue(right.HasWindow(moved.WindowReference));
+        }
+
+        [TestMethod]
         public void GroupsAreNumberedFromOneAndReuseFreedNumbers()
         {
             GroupNumbers.Reset();
@@ -451,6 +489,35 @@ namespace wintabs.Tests
             Assert.IsTrue(workspace.SplitTab(third, TilingDirection.Right));
             Assert.AreEqual(2, ((StackPanelNode)third.Parent!).GroupNumber);
             Assert.AreEqual(1, original.GroupNumber);
+        }
+
+        [TestMethod]
+        public void ClosingAGroupMovesTheLaterNumbersUpWithoutGaps()
+        {
+            GroupNumbers.Reset();
+            var workspace = new TilingWorkspace(tabsOnly: true);
+            var desktop = m_desktopFactory.CreateVirtualDesktop();
+            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var tree = workspace.GetTree(desktop)!;
+            var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var c = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            tree.Arrange();
+            Assert.IsTrue(workspace.SplitTab(b, TilingDirection.Right));
+            tree.Measure();
+            tree.Arrange();
+            Assert.IsTrue(workspace.SplitTab(c, TilingDirection.Down));
+            var first = (StackPanelNode)a.Parent!;
+            var second = (StackPanelNode)b.Parent!;
+            var third = (StackPanelNode)c.Parent!;
+            Assert.AreEqual(1, first.GroupNumber);
+            Assert.AreEqual(2, second.GroupNumber);
+            Assert.AreEqual(3, third.GroupNumber);
+
+            // Group 1 closes: the remaining groups become 1 and 2, keeping their order.
+            workspace.UnregisterWindow(a.WindowReference);
+            Assert.AreEqual(1, second.GroupNumber);
+            Assert.AreEqual(2, third.GroupNumber);
         }
 
         [TestMethod]

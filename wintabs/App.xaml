@@ -38,6 +38,39 @@
                 <Setter Property="CornerRadius" Value="3" />
                 <Setter Property="Padding" Value="5,0" />
             </Style>
+            <!-- A key combination ("Ctrl" + "Shift" + "1 - 9") drawn as key caps; bound to a list of key labels. -->
+            <Style x:Key="KeyCapStyle" TargetType="Border" BasedOn="{StaticResource KeyChipStyle}">
+                <Setter Property="Padding" Value="8,3" />
+                <Setter Property="MinWidth" Value="30" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <DataTemplate x:Key="KeyComboTemplate">
+                <ItemsControl ItemsSource="{Binding}" VerticalAlignment="Center" Focusable="False">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="Plus" Text="+" Margin="5,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <Border Style="{StaticResource KeyCapStyle}">
+                                    <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
+                                    <Setter TargetName="Plus" Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DataTemplate>
             <Style x:Key="IconStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{DynamicResource SymbolThemeFontFamily}" />
                 <Setter Property="VerticalAlignment" Value="Center" />

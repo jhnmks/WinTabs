@@ -55,11 +55,10 @@ OPTIONS:
     --version                 Show version info
 
 SHORTCUTS:
-    Ctrl + Win + Arrow        Focus the neighbouring tab group
     Ctrl + Arrow              Switch to the previous / next tab
     Ctrl + Shift + Arrow      Move the tab one position
     Ctrl + Shift + 1-9        Move the tab to the end of that numbered group
-    Win + Shift + Arrow       Tile the tab beside its group
+    Ctrl + Alt + Arrow        Tile the tab beside its group
     Ctrl + Win + /            Show the shortcuts cheat sheet
 
 Type 'wintabs --help' from anywhere after installation.

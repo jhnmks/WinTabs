@@ -667,8 +667,39 @@ namespace wintabs
         /// </summary>
         private void SyncFocusToForeground()
         {
+            // Right after a shortcut activates a tab, Windows may still report the previous foreground window.
+            // Trust our own choice for a moment so back-to-back shortcuts build on each other.
+            if (Environment.TickCount64 - m_lastShortcutFocus < ShortcutFocusGraceMs)
+                return;
             if (m_workspace.FocusedWindow is IWindow foreground && m_backend.HasWindow(foreground))
                 m_backend.SetFocus(foreground);
+        }
+
+        private const long ShortcutFocusGraceMs = 400;
+        private long m_lastShortcutFocus;
+
+        /// <summary>
+        /// When this display last took focus through a shortcut, if that is recent enough to still be in effect.
+        /// </summary>
+        internal long? RecentShortcutFocus =>
+            Environment.TickCount64 - m_lastShortcutFocus < ShortcutFocusGraceMs ? m_lastShortcutFocus : null;
+
+        /// <summary>
+        /// Records that WinTabs itself just moved focus to <paramref name="tab"/>. Call with the backend lock held.
+        /// </summary>
+        private void SetShortcutFocus(WindowNode tab)
+        {
+            m_backend.SetFocus(tab);
+            m_lastShortcutFocus = Environment.TickCount64;
+        }
+
+        // Another group closed and the numbers after it moved up; redraw this display's badges.
+        private void OnGroupsRenumbered(object? sender, EventArgs e) => m_dispatcher.BeginInvoke(InvalidateLayout);
+
+        internal bool HasWindow(IWindow window)
+        {
+            using (m_backendLock.EnterScope())
+                return m_backend.HasWindow(window);
         }
 
         internal bool HasGroup(int groupNumber)
@@ -1010,25 +1041,25 @@ namespace wintabs
 
         private void OnTilingNodeFocusRequested(object? sender, TilingNode e)
         {
+            WindowNode? windowNode;
             using (m_backendLock.EnterScope())
             {
-                var windowNode = e.Windows.FirstOrDefault();
-                try
-                {
-                    if (windowNode != null)
-                    {
-                        if (FocusHelper.ForceActivate(windowNode.WindowReference.Handle))
-                        {
-                            m_backend.SetFocus(windowNode.WindowReference);
-                            InvalidateLayout();
-                        }
-                    }
-                }
-                catch (InvalidWindowReferenceException)
-                {
+                windowNode = e.Windows.FirstOrDefault();
+                if (windowNode == null || !m_backend.HasWindow(windowNode.WindowReference))
                     return;
-                }
+                // Record the target first, so a shortcut pressed straight after builds on this one.
+                SetShortcutFocus(windowNode);
             }
+
+            try
+            {
+                FocusHelper.ForceActivate(windowNode.WindowReference.Handle);
+            }
+            catch (InvalidWindowReferenceException)
+            {
+                return;
+            }
+            InvalidateLayout();
         }
 
         private void OnTilingNodeCloseRequested(object? sender, TilingNode e)

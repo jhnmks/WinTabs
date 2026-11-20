@@ -32,8 +32,6 @@ namespace wintabs
         void SetWorkspacePaused(bool paused);
         void Float();
         Task ToggleDesktopAsync();
-        bool CanMoveFocus(TilingDirection direction);
-        void MoveFocus(TilingDirection direction);
         void CycleTab(int offset);
         void MoveTab(int offset);
         void TileTab(TilingDirection direction);
@@ -41,8 +39,6 @@ namespace wintabs
 
         void Stop();
         void Start();
-        IWindow? GetFocus();
         Rectangle GetBounds();
-        IWindow? FindClosest(Point center);
     }
 }

@@ -1,39 +1,54 @@
+using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace wintabs.Layouts.Tiling
 {
     /// <summary>
     /// Hands out the numbers shown on tab group badges. Only groups that contain tabs and are part of a
-    /// layout hold a number, and a new group always takes the lowest number not in use, so the visible
-    /// groups stay 1, 2, 3, ... The registry is process-wide so numbers are unique across every display.
+    /// layout are numbered, and the numbers always run 1, 2, 3, ... without gaps: groups keep their
+    /// order of creation, and when one closes, the ones after it move up. The registry is process-wide
+    /// so numbers are unique across every display.
     /// </summary>
     public static class GroupNumbers
     {
         private static readonly object s_lock = new();
-        private static readonly Dictionary<StackPanelNode, int> s_assigned = new(ReferenceEqualityComparer.Instance);
+        private static readonly List<StackPanelNode> s_order = [];
 
         /// <summary>
-        /// The group's number, assigning the lowest free one on first use. Groups without tabs, or not in a
-        /// layout, have no number (0).
+        /// Raised when existing groups were renumbered (a group closed), so every display can refresh its badges.
+        /// </summary>
+        public static event EventHandler? Renumbered;
+
+        /// <summary>
+        /// The group's number. Groups without tabs, or not in a layout, have no number (0).
         /// </summary>
         public static int Get(StackPanelNode group)
         {
+            bool renumbered;
+            int number;
             lock (s_lock)
             {
-                PruneStale();
+                renumbered = PruneStale();
                 if (!IsNumbered(group))
-                    return 0;
-                if (s_assigned.TryGetValue(group, out int number))
-                    return number;
-
-                var used = s_assigned.Values.ToHashSet();
-                number = 1;
-                while (used.Contains(number))
-                    number++;
-                s_assigned[group] = number;
-                return number;
+                {
+                    number = 0;
+                }
+                else
+                {
+                    int index = s_order.IndexOf(group);
+                    if (index < 0)
+                    {
+                        s_order.Add(group);
+                        index = s_order.Count - 1;
+                    }
+                    number = index + 1;
+                }
             }
+
+            // Raised outside the lock so handlers may read numbers freely.
+            if (renumbered)
+                Renumbered?.Invoke(null, EventArgs.Empty);
+            return number;
         }
 
         /// <summary>For tests.</summary>
@@ -41,26 +56,22 @@ namespace wintabs.Layouts.Tiling
         {
             lock (s_lock)
             {
-                s_assigned.Clear();
+                s_order.Clear();
             }
         }
 
         private static bool IsNumbered(StackPanelNode group) => group.Children.Count > 0 && group.Desktop != null;
 
-        // Groups that emptied, or were dropped from their layout (closed, merged, display removed), give
-        // their number back.
-        private static void PruneStale()
+        // Drops groups that emptied or left their layout (closed, merged, display removed). Returns true if
+        // any group that stays numbered moved to a lower number as a result.
+        private static bool PruneStale()
         {
-            List<StackPanelNode>? stale = null;
-            foreach (var group in s_assigned.Keys)
-            {
-                if (!IsNumbered(group))
-                    (stale ??= []).Add(group);
-            }
-            if (stale == null)
-                return;
-            foreach (var group in stale)
-                s_assigned.Remove(group);
+            int firstRemoved = s_order.FindIndex(group => !IsNumbered(group));
+            if (firstRemoved < 0)
+                return false;
+
+            s_order.RemoveAll(group => !IsNumbered(group));
+            return firstRemoved < s_order.Count;
         }
     }
 }

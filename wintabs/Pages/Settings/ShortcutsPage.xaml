@@ -8,12 +8,6 @@
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="800">
     <UserControl.Resources>
-        <Style x:Key="Key" TargetType="Border" BasedOn="{StaticResource KeyChipStyle}">
-            <Setter Property="Padding" Value="8,3" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
         <CollectionViewSource x:Key="Grouped" Source="{x:Static models:ShortcutCatalog.All}">
             <CollectionViewSource.GroupDescriptions>
                 <PropertyGroupDescription PropertyName="Section" />
@@ -34,49 +28,51 @@
             </DockPanel>
         </Border>
 
-        <ItemsControl ItemsSource="{Binding Source={StaticResource Grouped}}">
+        <ItemsControl ItemsSource="{Binding Source={StaticResource Grouped}}" Grid.IsSharedSizeScope="True" Focusable="False">
             <ItemsControl.GroupStyle>
                 <GroupStyle>
-                    <GroupStyle.HeaderTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Name}" Style="{StaticResource SettingsSectionStyle}" />
-                        </DataTemplate>
-                    </GroupStyle.HeaderTemplate>
+                    <GroupStyle.ContainerStyle>
+                        <Style TargetType="GroupItem">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="GroupItem">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource SettingsSectionStyle}" />
+                                            <!-- One card per section; rows inside are separated by thin dividers. -->
+                                            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                                    CornerRadius="{DynamicResource ControlCornerRadius}">
+                                                <ItemsPresenter />
+                                            </Border>
+                                        </StackPanel>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GroupStyle.ContainerStyle>
                 </GroupStyle>
             </ItemsControl.GroupStyle>
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type models:ShortcutInfo}">
-                    <Border Style="{StaticResource SettingsItemStyle}" Margin="0,2">
-                        <DockPanel>
-                            <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding Keys}" Margin="16,0,0,0" VerticalAlignment="Center">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock x:Name="Plus" Text="+" Margin="4,0" VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                            <Border Style="{StaticResource Key}">
-                                                <TextBlock Text="{Binding}" />
-                                            </Border>
-                                        </StackPanel>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
-                                                <Setter TargetName="Plus" Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <StackPanel VerticalAlignment="Center">
+                    <Border x:Name="Row" Padding="16,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="Keys" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="{Binding Title}" />
                                 <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Text="{Binding Description}" />
                             </StackPanel>
-                        </DockPanel>
+                            <ContentPresenter Grid.Column="1" Content="{Binding Keys}" ContentTemplate="{StaticResource KeyComboTemplate}" />
+                        </Grid>
                     </Border>
+                    <DataTemplate.Triggers>
+                        <!-- No divider above the first row of each card. -->
+                        <DataTrigger Binding="{Binding IsFirstInSection}" Value="True">
+                            <Setter TargetName="Row" Property="BorderThickness" Value="0" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>

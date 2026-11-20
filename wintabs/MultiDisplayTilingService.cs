@@ -296,37 +296,6 @@ namespace wintabs
             GetActiveTilingService().Float();
         }
 
-        public void MoveFocus(TilingDirection direction)
-        {
-            var tiling = GetActiveTilingService();
-            if (tiling.CanMoveFocus(direction))
-            {
-                tiling.MoveFocus(direction);
-                return;
-            }
-
-            var closest = m_tilingServices.Values
-                .Where(x => x != tiling)
-                .OrderBy(x => SqrDistanceInDirection(tiling.GetBounds().Center, x.GetBounds().Center, direction))
-                .FirstOrDefault();
-            if (closest == null)
-            {
-                return;
-            }
-
-            IWindow? focusedWindow = tiling.GetFocus();
-            if (focusedWindow == null)
-            {
-                return;
-            }
-
-            var closestWindow = closest.FindClosest(focusedWindow.Position.Center);
-            if (closestWindow != null)
-            {
-                FocusHelper.ForceActivate(closestWindow.Handle);
-            }
-        }
-
         public void SetWorkspacePaused(bool paused)
         {
             if (m_workspacePaused == paused)
@@ -364,100 +333,63 @@ namespace wintabs
             }
         }
 
-        public bool CanMoveFocus(TilingDirection direction)
-        {
-            if (GetActiveTilingService().CanMoveFocus(direction))
-            {
-                return true;
-            }
-
-            var tiling = GetActiveTilingService();
-            var closest = m_tilingServices.Values
-                .OrderBy(x => SqrDistanceInDirection(tiling.GetBounds().Center, x.GetBounds().Center, direction))
-                .FirstOrDefault();
-            if (closest == null)
-            {
-                return false;
-            }
-
-            IWindow? focusedWindow = tiling.GetFocus();
-            if (focusedWindow == null)
-            {
-                return false;
-            }
-
-            return closest.FindClosest(focusedWindow.Position.Center) != null;
-        }
-
         public void CycleTab(int offset)
         {
-            GetActiveTilingService().CycleTab(offset);
+            GetFocusedTabService().CycleTab(offset);
         }
 
         public bool MoveTabToGroup(int groupNumber)
         {
-            var source = GetActiveTilingService();
-            if (source.HasGroup(groupNumber))
-                return source.MoveTabToGroup(groupNumber);
-
+            var source = GetFocusedTabService();
             TilingService? destination;
             lock (m_syncRoot)
             {
-                destination = m_tilingServices.Values.FirstOrDefault(x => x != source && x.HasGroup(groupNumber));
+                destination = m_tilingServices.Values.FirstOrDefault(x => x.HasGroup(groupNumber));
             }
-            return destination != null && source.TransferFocusedTabTo(destination, groupNumber);
+
+            if (destination == null)
+                return false;
+            return destination == source
+                ? source.MoveTabToGroup(groupNumber)
+                : source.TransferFocusedTabTo(destination, groupNumber);
         }
 
         public void TileTab(TilingDirection direction)
         {
-            GetActiveTilingService().TileTab(direction);
+            GetFocusedTabService().TileTab(direction);
+        }
+
+        /// <summary>
+        /// The display service holding the focused tab; the "active" display can lag behind focus changes.
+        /// </summary>
+        private TilingService GetFocusedTabService()
+        {
+            lock (m_syncRoot)
+            {
+                // A display that just took focus through a shortcut wins: Windows may not report it as foreground yet.
+                var justFocused = m_tilingServices.Values
+                    .Where(x => x.RecentShortcutFocus != null)
+                    .OrderByDescending(x => x.RecentShortcutFocus)
+                    .FirstOrDefault();
+                if (justFocused != null)
+                    return justFocused;
+
+                var foreground = Workspace.FocusedWindow;
+                return (foreground == null ? null : m_tilingServices.Values.FirstOrDefault(x => x.HasWindow(foreground)))
+                    ?? GetActiveTilingService();
+            }
         }
 
         public void MoveTab(int offset)
         {
-            GetActiveTilingService().MoveTab(offset);
+            GetFocusedTabService().MoveTab(offset);
         }
 
         public Task ToggleDesktopAsync() => GetActiveTilingService().ToggleDesktopAsync();
 
-        public IWindow? GetFocus()
-        {
-            return GetActiveTilingService().GetFocus();
-        }
-
         public Rectangle GetBounds()
         {
             throw new NotSupportedException();
-        }
-
-        public IWindow? FindClosest(Point center)
-        {
-            throw new NotSupportedException();
-        }
-
-        private static double SqrDistanceInDirection(Point from, Point to, TilingDirection direction)
-        {
-            switch (direction)
-            {
-                case TilingDirection.Left:
-                    if (from.X > to.X)
-                        return double.PositiveInfinity;
-                    break;
-                case TilingDirection.Right:
-                    if (from.X < to.X)
-                        return double.PositiveInfinity;
-                    break;
-                case TilingDirection.Up:
-                    if (from.Y < to.Y)
-                        return double.PositiveInfinity;
-                    break;
-                case TilingDirection.Down:
-                    if (from.Y > to.Y)
-                        return double.PositiveInfinity;
-                    break;
-            }
-
-            return (from.X - to.X) * (from.X - to.X) + (from.Y - to.Y) * (from.Y - to.Y);
         }
     }
 }
