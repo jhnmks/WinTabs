@@ -36,9 +36,10 @@ namespace wintabs
         [STAThread]
         public static int Main(string[] args)
         {
-            if (args.Length == 0)
+            // A GUI app has no console; when started from a terminal with options, print to that terminal.
+            if (args.Length != 0)
             {
-                PInvoke.FreeConsole();
+                PInvoke.AttachConsole(unchecked((uint)-1)); // ATTACH_PARENT_PROCESS
             }
 
             if (args.Contains("--help") || args.Contains("-h"))
@@ -60,8 +61,6 @@ SHORTCUTS:
     Ctrl + Shift + 1-9        Move the tab to the end of that numbered group
     Ctrl + Alt + Arrow        Tile the tab beside its group
     Ctrl + Alt + /            Show the shortcuts cheat sheet
-
-Type 'wintabs --help' from anywhere after installation.
 ");
                 return 0;
             }

@@ -14,6 +14,10 @@ Only the tab whose app window has Windows focus is highlighted; other tabs fade.
 
 WinTabs follows the Windows app theme by default. To override it, open **Settings → Interface → Appearance** and choose **Light** or **Dark**. Custom theme files and accent overrides are not loaded.
 
+## Install
+
+Download `WinTabs-<version>-setup.exe` from [Releases](https://github.com/jhnmks/WinTabs/releases) and run it. It installs for the current user only (no administrator prompt) and includes everything it needs; .NET does not have to be installed. The installer is not code-signed yet, so Windows SmartScreen may show **Windows protected your PC**: choose **More info → Run anyway**. Uninstall from **Settings → Apps → Installed apps**.
+
 ## Run from source
 
 Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) on Windows, then run from the repository root:
@@ -22,9 +26,18 @@ Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) on 
 dotnet run --project .\wintabs\wintabs.csproj
 ```
 
-The dependency sources are included in the repository; there are no Git submodules to initialize. The first build may need to restore NuGet packages. For a Windows packaging build, open `wintabs.sln` in Visual Studio with the Windows Application Packaging Project tooling installed. To distribute a signed package, use your own signing certificate and matching publisher identity.
+The dependency sources are included in the repository; there are no Git submodules to initialize. The first build may need to restore NuGet packages.
 
-The unpackaged app keeps settings and logs under `%APPDATA%\wintabs`. It does not import settings or startup entries from other installations.
+WinTabs keeps settings and logs under `%APPDATA%\wintabs`.
+
+## Build the installer
+
+```powershell
+.\installer\build.ps1               # version from Directory.Build.props
+.\installer\build.ps1 -Version 1.0.0
+```
+
+This writes `artifacts\WinTabs-<version>-setup.exe`; the Inno Setup compiler is downloaded on first use. To publish a release, push a version tag such as `v1.0.0`: GitHub Actions runs the tests, builds the installer, and attaches it to a GitHub release (tags with a suffix, like `v1.0.0-beta`, become pre-releases).
 
 ## Test layout recovery
 

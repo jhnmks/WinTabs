@@ -28,7 +28,7 @@ FindWindowEx
 IsWindow
 GetWindowRect
 GetConsoleWindow
-FreeConsole
+AttachConsole
 SystemParametersInfo
 
 WINDOWS_EX_STYLE
