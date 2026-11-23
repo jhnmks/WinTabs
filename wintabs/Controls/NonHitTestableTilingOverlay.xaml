@@ -20,6 +20,9 @@
             Height="{Binding PreviewRectangle.Height}"
             Canvas.Left="{Binding PreviewRectangle.Left}"
             Canvas.Top="{Binding PreviewRectangle.Top}">
+            <Rectangle.Fill>
+                <SolidColorBrush Color="{x:Static SystemColors.AccentColor}" Opacity="0.2" />
+            </Rectangle.Fill>
             <Rectangle.Style>
                 <Style>
                     <Style.Triggers>

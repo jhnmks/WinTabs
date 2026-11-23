@@ -530,36 +530,43 @@ namespace wintabs
             InvalidateLayout();
         }
 
-        private StackPanelNode? FindDropGroup(DesktopTree? sourceDesktop, StackPanelNode source, Point point)
-        {
-            var desktop = m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop);
-            return sourceDesktop == desktop
-                ? desktop?.Root?.Nodes.OfType<StackPanelNode>()
-                    .FirstOrDefault(group => group != source && TilingWorkspace.GetGroupBounds(group).Contains(point))
-                : null;
-        }
-
-        private void OnTabMoved(WindowNode tab, Point point, bool commit)
+        /// <summary>
+        /// A tab is dragged (by its window's title bar) or dropped. Shows where it will land, or on commit puts it
+        /// there: on this display, or on the display under the cursor. Returns whether the drop changed anything.
+        /// </summary>
+        private bool OnTabMoved(WindowNode tab, Point point, bool commit)
         {
             if (!Active || m_workspacePaused)
-                return;
+                return false;
 
+            if (!m_display.Bounds.Contains(point))
+            {
+                m_gui.PreviewRectangle = null;
+                return ExternalTabDrag?.Invoke(this, tab, point, commit) == true;
+            }
+
+            ClearExternalDropPreview?.Invoke();
             using (m_backendLock.EnterScope())
             {
                 var desktop = m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop);
                 if (desktop == null || tab.Desktop != desktop)
-                    return;
+                {
+                    m_gui.PreviewRectangle = null;
+                    return false;
+                }
                 if (!commit)
                 {
                     var target = m_backend.GetTabDropTarget(tab, point);
                     m_gui.PreviewRectangle = target is { } drop ? GetDropPreview(drop.Group, drop.Edge) : null;
-                    return;
+                    return false;
                 }
+                m_gui.PreviewRectangle = null;
                 if (!m_backend.DropTab(tab, point))
-                    return;
+                    return false;
             }
             OnTilingNodeFocusRequested(this, tab);
             InvalidateLayout();
+            return true;
         }
 
         private void OnGroupMoved(StackPanelNode source, Point point, bool commit)
@@ -574,40 +581,209 @@ namespace wintabs
                 return;
             }
 
-            ClearExternalGroupPreview?.Invoke();
-            if (commit)
-                m_gui.PreviewRectangle = null;
+            ClearExternalDropPreview?.Invoke();
+            WindowNode? focus = null;
             using (m_backendLock.EnterScope())
             {
-                var target = FindDropGroup(source.Desktop, source, point);
-                if (target == null)
+                var target = source.Desktop?.Root is PanelNode root && source.Desktop == m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop)
+                    ? TilingWorkspace.FindGroupAt(root, point) : null;
+                if (target == null || target == source)
                 {
                     m_gui.PreviewRectangle = null;
                     return;
                 }
 
-                var bounds = TilingWorkspace.GetGroupBounds(target);
-                double x = (double)(point.X - bounds.Left) / Math.Max(1, bounds.Width);
-                double y = (double)(point.Y - bounds.Top) / Math.Max(1, bounds.Height);
-                var edges = new[] { x, 1 - x, y, 1 - y };
-                int nearest = Array.IndexOf(edges, edges.Min());
-                int headerBottom = target.Parent == null ? bounds.Top + target.Padding.Top : target.ComputedRectangle.Top;
-                TilingDirection? direction = point.Y >= headerBottom && edges[nearest] < 0.25 ? nearest switch
+                // On its tab bar: merge into it. Near an edge: tile beside it. In the middle: swap places.
+                if (TilingWorkspace.IsOnTabBar(target, point))
                 {
-                    0 => TilingDirection.Left,
-                    1 => TilingDirection.Right,
-                    2 => TilingDirection.Up,
-                    _ => TilingDirection.Down,
-                } : null;
-                if (commit)
+                    bool canMerge = TilingWorkspace.CanMergeInto(source, target);
+                    if (!commit)
+                    {
+                        m_gui.PreviewRectangle = canMerge ? TilingWorkspace.GetGroupBounds(target) : null;
+                        return;
+                    }
+                    m_gui.PreviewRectangle = null;
+                    var selected = source.SelectedTab;
+                    if (!canMerge || !m_backend.MergeTabGroup(source, target))
+                        return;
+                    focus = selected;
+                }
+                else
                 {
-                    if (m_backend.MoveTabGroup(source, target, direction))
-                        InvalidateLayout();
+                    var edge = TilingWorkspace.GetDropEdge(target, point);
+                    bool valid = m_backend.CanMoveTabGroup(source, target, edge);
+                    if (!commit)
+                    {
+                        m_gui.PreviewRectangle = valid ? GetGroupMovePreview(source, target, edge) : null;
+                        return;
+                    }
+                    m_gui.PreviewRectangle = null;
+                    if (!valid || !m_backend.MoveTabGroup(source, target, edge))
+                        return;
+                }
+            }
+            InvalidateLayout();
+            if (focus != null)
+                OnTilingNodeFocusRequested(this, focus);
+        }
+
+        /// <summary>
+        /// Swapping two groups highlights the spot the dragged group will take (the target's place), slightly
+        /// inset, so it reads differently from a merge, which highlights the target group with its tab bar.
+        /// </summary>
+        private static Rectangle GetGroupMovePreview(StackPanelNode source, StackPanelNode target, TilingDirection? edge)
+        {
+            if (edge != null)
+                return GetDropPreview(target, edge);
+            var bounds = TilingWorkspace.GetGroupBounds(target);
+            var bar = TilingWorkspace.GetTabBarBounds(target);
+            return new Rectangle(bounds.Left, bar.Bottom, bounds.Right, bounds.Bottom);
+        }
+
+        /// <summary>
+        /// Where something dragged in from another display would land here: an empty display takes it whole
+        /// (no target), otherwise the group under the cursor and the side to tile on. Call with the backend lock held.
+        /// </summary>
+        private bool TryGetForeignDrop(Point point, out StackPanelNode? target, out TilingDirection? edge)
+        {
+            target = null;
+            edge = null;
+            if (m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop)?.Root is not PanelNode root)
+                return false;
+            if (root.Children.Count == 0)
+                return true;
+            target = TilingWorkspace.FindGroupAt(root, point);
+            if (target == null)
+                return false;
+            edge = TilingWorkspace.GetDropEdge(target, point);
+            return true;
+        }
+
+        /// <summary>
+        /// A tab from another display is dragged over this one. Previews the drop, or on commit takes the tab: into
+        /// the empty display, into the group under the cursor, or as a new group beside it.
+        /// </summary>
+        internal bool PreviewOrDropTabFrom(TilingService source, WindowNode tab, Point point, bool commit)
+        {
+            m_gui.PreviewRectangle = null;
+            if (!Active || m_workspacePaused || !source.Active || source.m_workspacePaused)
+                return false;
+
+            var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+            WindowNode? moved;
+            using (source.m_backendLock.EnterScope())
+            using (m_backendLock.EnterScope())
+            {
+                if (!TryGetForeignDrop(point, out var target, out var edge) ||
+                    target != null && !TilingWorkspace.CanAcceptTab(tab, target, edge))
+                    return false;
+                if (!commit)
+                {
+                    m_gui.PreviewRectangle = target == null ? m_display.WorkArea : GetDropPreview(target, edge);
+                    return false;
+                }
+                moved = source.m_backend.TransferTab(tab, m_backend, target, edge, desktop);
+                if (moved == null)
+                    return false;
+                moved.Parent!.Padding = GetPanelPaddingRect();
+                ((StackPanelNode)moved.Parent).Spacing = GetPanelSpacing();
+            }
+            source.InvalidateLayout();
+            InvalidateLayout();
+            OnTilingNodeFocusRequested(this, moved);
+            return true;
+        }
+
+        /// <summary>
+        /// A group from another display is dragged over this one. Previews the drop, or on commit takes the group:
+        /// onto an empty display, swapped with the group under the cursor, or tiled beside it.
+        /// </summary>
+        internal void PreviewOrDropGroupFrom(TilingService source, StackPanelNode group, Point point, bool commit)
+        {
+            m_gui.PreviewRectangle = null;
+            if (!Active || m_workspacePaused || !source.Active || source.m_workspacePaused)
+                return;
+
+            var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+            StackPanelNode? target;
+            TilingDirection? direction;
+            bool merge;
+            using (source.m_backendLock.EnterScope())
+            using (m_backendLock.EnterScope())
+            {
+                if (!TryGetForeignDrop(point, out target, out direction))
+                    return;
+                merge = target != null && TilingWorkspace.IsOnTabBar(target, point);
+                if (target != null && !(merge ? TilingWorkspace.CanMergeInto(group, target) : TilingWorkspace.CanAcceptGroup(group, target, direction)))
+                    return;
+                if (!commit)
+                {
+                    m_gui.PreviewRectangle = target == null ? m_display.WorkArea
+                        : merge ? TilingWorkspace.GetGroupBounds(target)
+                        : GetGroupMovePreview(group, target, direction);
                     return;
                 }
-
-                m_gui.PreviewRectangle = GetDropPreview(target, direction);
             }
+
+            if (target == null)
+            {
+                source.TransferGroupTo(group, this);
+                return;
+            }
+
+            WindowNode? focus;
+            if (merge)
+            {
+                using (source.m_backendLock.EnterScope())
+                using (m_backendLock.EnterScope())
+                {
+                    focus = group.SelectedTab;
+                    if (!source.m_backend.MergeTabGroupInto(group, m_backend, target, desktop))
+                        return;
+                }
+                source.InvalidateLayout();
+                InvalidateLayout();
+                if (focus != null)
+                    OnTilingNodeFocusRequested(this, focus);
+                return;
+            }
+
+            using (source.m_backendLock.EnterScope())
+            using (m_backendLock.EnterScope())
+            {
+                if (!source.m_backend.MoveTabGroupTo(group, m_backend, target, direction, desktop))
+                    return;
+                group.Padding = GetPanelPaddingRect();
+                group.Spacing = GetPanelSpacing();
+                if (direction == null)
+                {
+                    target.Padding = source.GetPanelPaddingRect();
+                    target.Spacing = source.GetPanelSpacing();
+                }
+                focus = group.SelectedTab;
+            }
+            source.InvalidateLayout();
+            InvalidateLayout();
+            if (focus != null)
+                OnTilingNodeFocusRequested(this, focus);
+        }
+
+        private Point GetCursor() =>
+            wintabs.DllImports.PInvoke.GetCursorPos(out var cursor) ? new Point(cursor.x, cursor.y) : m_workspace.CursorLocation;
+
+        /// <summary>
+        /// A title-bar drag moves the window; a border drag resizes it, keeping the opposite edges in place. Moving
+        /// onto a monitor with other scaling also resizes the window, so the size alone does not tell them apart.
+        /// </summary>
+        internal static bool IsMoveGesture(Rectangle start, Rectangle position)
+        {
+            if (position == start)
+                return false;
+            if (position.Size == start.Size)
+                return true;
+            bool xAnchored = position.Left == start.Left || position.Right == start.Right;
+            bool yAnchored = position.Top == start.Top || position.Bottom == start.Bottom;
+            return !(xAnchored && yAnchored);
         }
 
         private static Rectangle GetDropPreview(StackPanelNode group, TilingDirection? direction)
@@ -623,15 +799,9 @@ namespace wintabs
             };
         }
 
-        internal void SetExternalGroupPreview(bool visible)
+        internal void ClearGroupPreview()
         {
-            m_gui.PreviewRectangle = visible && Active && !m_workspacePaused ? m_display.WorkArea : null;
-        }
-
-        internal bool IsEmptyOnCurrentDesktop()
-        {
-            using (m_backendLock.EnterScope())
-                return Active && !m_workspacePaused && m_backend.GetTree(m_workspace.VirtualDesktopManager.CurrentDesktop)?.Root?.Children.Count == 0;
+            m_gui.PreviewRectangle = null;
         }
 
         /// <summary>
@@ -754,8 +924,7 @@ namespace wintabs
                 if (!m_ignoreRepositionSet.Remove(e.Source, out startPosition))
                     return;
             }
-            var dropPoint = wintabs.DllImports.PInvoke.GetCursorPos(out var cursor)
-                ? new Point(cursor.x, cursor.y) : m_workspace.CursorLocation;
+            var dropPoint = GetCursor();
             m_dispatcher.InvokeAsync(() =>
             {
                 if (!Active || m_workspacePaused)
@@ -764,30 +933,34 @@ namespace wintabs
                 m_gui.PreviewRectangle = null;
                 try
                 {
-                    if (e.Source.State == WindowState.Restored && e.NewPosition != startPosition &&
-                        m_display.Bounds.Contains(dropPoint))
-                    {
-                        WindowNode? tab;
-                        using (m_backendLock.EnterScope())
-                            tab = m_backend.FindWindow(e.Source);
+                    WindowNode? tab;
+                    using (m_backendLock.EnterScope())
+                        tab = m_backend.FindWindow(e.Source);
 
-                        if (tab != null)
+                    // A tab of another display: that display handles its drop.
+                    if (tab == null && IsTabElsewhere?.Invoke(e.Source) == true)
+                        return;
+
+                    if (tab != null && e.Source.State == WindowState.Restored)
+                    {
+                        if (IsMoveGesture(startPosition, e.NewPosition))
                         {
-                            if (e.NewPosition.Size == startPosition.Size)
-                            {
-                                OnTabMoved(tab, dropPoint, commit: true);
-                            }
-                            else
-                            {
-                                using (m_backendLock.EnterScope())
-                                {
-                                    if (tab.Parent is StackPanelNode group)
-                                        m_backend.ResizeNode(group, e.NewPosition, startPosition);
-                                }
-                            }
-                            InvalidateLayout();
-                            return;
+                            if (OnTabMoved(tab, dropPoint, commit: true))
+                                return;
+                            // Released where nothing accepts it: back into its group, unless it went to another monitor.
+                            if (!m_display.Bounds.Contains(dropPoint))
+                                DetectChanges(e.Source);
                         }
+                        else if (e.NewPosition != startPosition)
+                        {
+                            using (m_backendLock.EnterScope())
+                            {
+                                if (tab.Parent is StackPanelNode group)
+                                    m_backend.ResizeNode(group, e.NewPosition, startPosition);
+                            }
+                        }
+                        InvalidateLayout();
+                        return;
                     }
                     DetectChanges(e.Source);
                 }
@@ -820,29 +993,33 @@ namespace wintabs
                 KeyValuePair<IWindow, Rectangle>[] dragging;
                 using (m_ignoreRepositionSetLock.EnterScope())
                     dragging = m_ignoreRepositionSet.ToArray();
+                // Every display sees the gesture; only the display that owns the tab draws the preview (on itself or
+                // on the display under the cursor), so displays never clear each other's preview.
                 foreach (var (window, start) in dragging)
                 {
                     try
                     {
-                        var position = window.Position;
-                        if (position == start || position.Size != start.Size)
-                            continue;
                         WindowNode? tab;
                         using (m_backendLock.EnterScope())
                             tab = m_backend.FindWindow(window);
-                        if (tab != null)
+                        if (tab == null)
+                            continue;
+                        if (IsMoveGesture(start, window.Position))
                         {
-                            OnTabMoved(tab, m_workspace.CursorLocation, commit: false);
-                            return;
+                            OnTabMoved(tab, GetCursor(), commit: false);
                         }
+                        else
+                        {
+                            m_gui.PreviewRectangle = null;
+                            ClearExternalDropPreview?.Invoke();
+                        }
+                        return;
                     }
                     catch (InvalidWindowReferenceException)
                     {
                         // A window may close during the gesture.
                     }
                 }
-                if (dragging.Length != 0)
-                    m_gui.PreviewRectangle = null;
             }, System.Windows.Threading.DispatcherPriority.Input);
         }
 
@@ -1091,7 +1268,8 @@ namespace wintabs
 
         private bool DetectChanges(IWindow window)
         {
-            if (m_workspacePaused)
+            // While the user drags a window, only the drop decides where it goes.
+            if (m_workspacePaused || IsInWindowGesture(window))
                 return false;
 
             m_logger.Verbose("Dirty checking for changes with window {Window}", window.DebugString());

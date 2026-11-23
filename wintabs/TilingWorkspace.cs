@@ -303,18 +303,25 @@ namespace wintabs
         public bool SplitTab(WindowNode tab, TilingDirection direction) =>
             tab.Parent is StackPanelNode group && group.Children.Count > 1 && SplitTabBeside(tab, group, direction);
 
-        private bool SplitTabBeside(WindowNode tab, StackPanelNode target, TilingDirection direction)
+        private bool CanSplitTabBeside(WindowNode tab, StackPanelNode target, TilingDirection direction)
         {
             if (tab.Parent is not StackPanelNode source || tab.Desktop == null || tab.Desktop != target.Desktop)
                 return false;
-
             if (source.Children.Count < 2)
-                return source != target && MoveTabGroup(source, target, direction);
+                return source != target && CanMoveTabGroup(source, target, direction);
+            return CanAcceptTab(tab, target, direction);
+        }
 
-            var newGroup = new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing };
-            if (!CanSplitGroup(target, direction, newGroup, tab))
+        private bool SplitTabBeside(WindowNode tab, StackPanelNode target, TilingDirection direction)
+        {
+            if (!CanSplitTabBeside(tab, target, direction))
                 return false;
 
+            var source = (StackPanelNode)tab.Parent!;
+            if (source.Children.Count < 2)
+                return MoveTabGroup(source, target, direction);
+
+            var newGroup = new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing };
             source.Detach(tab);
             InsertGroup(target, newGroup, direction);
             newGroup.Attach(tab);
@@ -327,21 +334,132 @@ namespace wintabs
             if (tab.Parent is not StackPanelNode source || tab.Desktop?.Root is not PanelNode root)
                 return null;
 
-            var target = root.Nodes.OfType<StackPanelNode>()
-                .FirstOrDefault(group => GetGroupBounds(group).Contains(point));
+            var target = FindGroupAt(root, point);
             if (target == null)
                 return null;
 
+            var edge = GetDropEdge(target, point);
+            if (edge is TilingDirection direction)
+                return CanSplitTabBeside(tab, target, direction) ? (target, edge) : null;
+            // Its own group already holds it; any other group takes it as a tab.
+            return target == source ? null : (target, null);
+        }
+
+        /// <summary>The group whose area (tab bar included) contains the point.</summary>
+        public static StackPanelNode? FindGroupAt(PanelNode root, Point point) =>
+            root.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => group.Children.Count != 0 && GetGroupBounds(group).Contains(point));
+
+        /// <summary>
+        /// The one rule for every drag (tabs and groups, on any display): within the outer quarter of a group's
+        /// window area the drop tiles beside it on that side. On its tab bar or in its middle the drop goes into the
+        /// group (or swaps with it, for a group), shown as <c>null</c>.
+        /// </summary>
+        public static TilingDirection? GetDropEdge(StackPanelNode target, Point point)
+        {
             var bounds = GetGroupBounds(target);
             int headerBottom = target.Parent == null ? bounds.Top + target.Padding.Top : target.ComputedRectangle.Top;
-            // Other tab bars are always merge targets, even near a split boundary.
-            if (target != source && point.Y < headerBottom)
-                return (target, null);
+            if (point.Y < headerBottom)
+                return null;
+            double x = (double)(point.X - bounds.Left) / Math.Max(1, bounds.Width);
+            double y = (double)(point.Y - headerBottom) / Math.Max(1, bounds.Bottom - headerBottom);
+            var edges = new[] { x, 1 - x, y, 1 - y };
+            int nearest = Array.IndexOf(edges, edges.Min());
+            if (edges[nearest] >= 0.25)
+                return null;
+            return nearest switch
+            {
+                0 => TilingDirection.Left,
+                1 => TilingDirection.Right,
+                2 => TilingDirection.Up,
+                _ => TilingDirection.Down,
+            };
+        }
 
-            int edgeWidth = Math.Min(64, bounds.Width / 4);
-            TilingDirection? edge = point.X - bounds.Left < edgeWidth ? TilingDirection.Left
-                : bounds.Right - point.X <= edgeWidth ? TilingDirection.Right : null;
-            return target == source && (edge == null || source.Children.Count < 2) ? null : (target, edge);
+        /// <summary>Whether the tab can become a new group beside <paramref name="target"/> (or join it, without an edge).</summary>
+        public static bool CanAcceptTab(WindowNode tab, StackPanelNode target, TilingDirection? edge) =>
+            edge is not TilingDirection direction ||
+            CanSplitGroup(target, direction, new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing }, tab);
+
+        /// <summary>The strip of the group's tab bar; dropping a group there merges it into this one.</summary>
+        public static Rectangle GetTabBarBounds(StackPanelNode group)
+        {
+            var bounds = GetGroupBounds(group);
+            int headerBottom = group.Parent == null ? bounds.Top + group.Padding.Top : group.ComputedRectangle.Top;
+            return new Rectangle(bounds.Left, bounds.Top, bounds.Right, Math.Max(bounds.Top + 1, headerBottom));
+        }
+
+        public static bool IsOnTabBar(StackPanelNode group, Point point) => GetTabBarBounds(group).Contains(point);
+
+        /// <summary>Whether every tab of <paramref name="group"/> fits in <paramref name="target"/>.</summary>
+        public static bool CanMergeInto(StackPanelNode group, StackPanelNode target)
+        {
+            if (group == target || group.Children.Count == 0 || target.Children.Count == 0)
+                return false;
+            group.Measure();
+            return FitsGroup(group, GetGroupBounds(target));
+        }
+
+        /// <summary>
+        /// Moves every tab of <paramref name="source"/> to the end of <paramref name="target"/> (same display), in
+        /// order, and removes the emptied group. The tab that was selected in it stays selected and gets focus.
+        /// </summary>
+        public bool MergeTabGroup(StackPanelNode source, StackPanelNode target)
+        {
+            if (source.Desktop == null || source.Desktop != target.Desktop || !CanMergeInto(source, target))
+                return false;
+
+            var selected = source.SelectedTab;
+            foreach (var tab in source.Children.OfType<WindowNode>().ToArray())
+            {
+                source.Detach(tab);
+                target.Attach(tab);
+            }
+            RemoveEmptyGroup(source);
+            if (selected != null)
+                SetFocus(selected);
+            return true;
+        }
+
+        /// <summary>
+        /// Moves every tab of <paramref name="group"/> to the end of <paramref name="target"/>, a group owned by
+        /// another workspace (another display), and removes the emptied group.
+        /// </summary>
+        public bool MergeTabGroupInto(StackPanelNode group, TilingWorkspace destination, StackPanelNode target, IVirtualDesktop desktop)
+        {
+            var source = m_states.GetState(desktop);
+            var other = destination.m_states.GetState(desktop);
+            if (source == null || other == null || source == other || group.Desktop != source.DesktopTree ||
+                target.Desktop != other.DesktopTree || !CanMergeInto(group, target))
+                return false;
+
+            var selected = group.SelectedTab;
+            foreach (var tab in group.Children.OfType<WindowNode>().ToArray())
+            {
+                group.Detach(tab);
+                target.Attach(tab);
+                if (m_originalPositions.Remove(tab.WindowReference, out var original))
+                    destination.m_originalPositions[tab.WindowReference] = original;
+            }
+            if (group.Parent != null)
+                RemoveEmptyGroup(group);
+            else
+                source.DesktopTree.Root = new StackPanelNode();
+
+            if (source.FocusedNode is { } stale && !source.DesktopTree.Root!.Nodes.Contains(stale))
+                source.FocusedNode = null;
+            if (selected != null)
+                destination.SetFocus(selected);
+            return true;
+        }
+
+        /// <summary>Whether a group from another display can swap with <paramref name="target"/>, or tile beside it.</summary>
+        public static bool CanAcceptGroup(StackPanelNode group, StackPanelNode target, TilingDirection? edge)
+        {
+            if (edge is TilingDirection direction)
+                return CanSplitGroup(target, direction, group);
+            group.Measure();
+            target.Measure();
+            return FitsGroup(group, GetGroupBounds(target)) && FitsGroup(target, GetGroupBounds(group));
         }
 
         public bool DropTab(WindowNode tab, Point point) => GetTabDropTarget(tab, point) is { } target &&
@@ -390,9 +508,19 @@ namespace wintabs
         /// <summary>
         /// Moves the focused tab to the end of a group owned by another workspace (another display).
         /// </summary>
-        public WindowNode? TransferFocusedTab(IVirtualDesktop desktop, TilingWorkspace destination, StackPanelNode target)
+        public WindowNode? TransferFocusedTab(IVirtualDesktop desktop, TilingWorkspace destination, StackPanelNode target) =>
+            GetFocus(desktop) is WindowNode tab ? TransferTab(tab, destination, target, null, desktop) : null;
+
+        /// <summary>
+        /// Moves a tab to a workspace of another display: into <paramref name="target"/>, into a new group beside it
+        /// (with an edge), or, without a target, into the empty display. Never loses the tab when that fails.
+        /// </summary>
+        public WindowNode? TransferTab(WindowNode tab, TilingWorkspace destination, StackPanelNode? target, TilingDirection? edge, IVirtualDesktop desktop)
         {
-            if (GetFocus(desktop) is not WindowNode { Parent: StackPanelNode source } tab || target.Desktop != destination.GetTree(desktop))
+            var tree = destination.GetTree(desktop);
+            if (tab.Parent is not StackPanelNode source || tab.Desktop != GetTree(desktop) || tree?.Root is not PanelNode root || tree == tab.Desktop)
+                return null;
+            if (target == null ? root is not StackPanelNode { Children.Count: 0 } : target.Desktop != tree || !CanAcceptTab(tab, target, edge))
                 return null;
 
             var window = tab.WindowReference;
@@ -404,7 +532,13 @@ namespace wintabs
             UnregisterWindow(window);
             try
             {
-                var moved = destination.RegisterWindow(window, target);
+                var group = target ?? (StackPanelNode)root;
+                if (target != null && edge is TilingDirection direction)
+                {
+                    group = new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing };
+                    InsertGroup(target, group, direction);
+                }
+                var moved = destination.RegisterWindow(window, group);
                 destination.m_originalPositions[window] = original;
                 destination.SetFocus(moved);
                 return moved;
@@ -457,39 +591,120 @@ namespace wintabs
             return true;
         }
 
-        public bool MoveTabGroup(StackPanelNode source, StackPanelNode target, TilingDirection? edge)
+        /// <summary>
+        /// Drops a tab group onto a group owned by another workspace (another display): swaps the two groups, or
+        /// with an edge, tiles it beside the target. Refuses when the windows would not fit.
+        /// </summary>
+        public bool MoveTabGroupTo(StackPanelNode group, TilingWorkspace destination, StackPanelNode target, TilingDirection? edge, IVirtualDesktop desktop)
+        {
+            var source = m_states.GetState(desktop);
+            var other = destination.m_states.GetState(desktop);
+            if (source == null || other == null || source == other || group.Desktop != source.DesktopTree ||
+                target.Desktop != other.DesktopTree || group.Children.Count == 0 || target.Children.Count == 0)
+                return false;
+
+            group.Measure();
+            target.Measure();
+            var focus = source.FocusedNode;
+            bool movesFocus = focus != null && group.Nodes.Contains(focus);
+            var moving = group.Windows.ToArray();
+            var returning = edge == null ? target.Windows.ToArray() : [];
+
+            if (!CanAcceptGroup(group, target, edge))
+                return false;
+            if (edge is TilingDirection direction)
+            {
+                if (group.Parent is PanelNode parent)
+                {
+                    parent.Detach(group);
+                    CollapseSplit(parent);
+                }
+                else
+                {
+                    source.DesktopTree.Root = new StackPanelNode();
+                }
+                InsertGroup(target, group, direction);
+            }
+            else
+            {
+                // Empty placeholders hold both places while the groups change layouts.
+                var groupSlot = new StackPanelNode();
+                var targetSlot = new StackPanelNode();
+                ReplaceGroup(source.DesktopTree, group, groupSlot);
+                ReplaceGroup(other.DesktopTree, target, targetSlot);
+                ReplaceGroup(source.DesktopTree, groupSlot, target);
+                ReplaceGroup(other.DesktopTree, targetSlot, group);
+            }
+
+            foreach (var node in moving)
+            {
+                if (m_originalPositions.Remove(node.WindowReference, out var original))
+                    destination.m_originalPositions[node.WindowReference] = original;
+            }
+            foreach (var node in returning)
+            {
+                if (destination.m_originalPositions.Remove(node.WindowReference, out var original))
+                    m_originalPositions[node.WindowReference] = original;
+            }
+            other.FocusedNode = movesFocus ? focus : group.SelectedTab;
+            if (source.FocusedNode is { } stale && !source.DesktopTree.Root!.Nodes.Contains(stale))
+                source.FocusedNode = edge == null ? target.SelectedTab : null;
+            return true;
+        }
+
+        private static void ReplaceGroup(DesktopTree tree, StackPanelNode group, StackPanelNode replacement)
+        {
+            if (group.Parent is PanelNode parent)
+                parent.Replace(group, replacement);
+            else
+                tree.Root = replacement;
+        }
+
+        /// <summary>Whether <see cref="MoveTabGroup"/> would change anything; used to show only drops that work.</summary>
+        public bool CanMoveTabGroup(StackPanelNode source, StackPanelNode target, TilingDirection? edge)
         {
             if (source == target || source.Parent == null || source.Desktop == null || source.Desktop != target.Desktop)
                 return false;
-
             if (edge is not TilingDirection direction)
             {
                 source.Measure();
                 target.Measure();
-                if (!FitsGroup(source, GetGroupBounds(target)) || !FitsGroup(target, GetGroupBounds(source)))
-                    return false;
+                return FitsGroup(source, GetGroupBounds(target)) && FitsGroup(target, GetGroupBounds(source));
+            }
+            if (GetSiblingMoveIndex(source, target, direction) is int to)
+                return to != source.Parent.IndexOf(source);
+            return CanSplitGroup(target, direction, source);
+        }
 
+        // Tiling beside a sibling in the same row or column only reorders the row; returns the new index then.
+        private static int? GetSiblingMoveIndex(StackPanelNode source, StackPanelNode target, TilingDirection direction)
+        {
+            if (source.Parent != target.Parent || source.Parent is not SplitPanelNode siblings ||
+                siblings.Orientation != GetOrientation(direction))
+                return null;
+            int from = siblings.IndexOf(source);
+            int to = siblings.IndexOf(target) + (IsBefore(direction) ? 0 : 1);
+            return from < to ? to - 1 : to;
+        }
+
+        public bool MoveTabGroup(StackPanelNode source, StackPanelNode target, TilingDirection? edge)
+        {
+            if (!CanMoveTabGroup(source, target, edge))
+                return false;
+
+            if (edge is not TilingDirection direction)
+            {
                 source.Swap(target);
                 return true;
             }
 
-            if (source.Parent == target.Parent && source.Parent is SplitPanelNode siblings &&
-                siblings.Orientation == GetOrientation(direction))
+            if (GetSiblingMoveIndex(source, target, direction) is int to)
             {
-                int from = siblings.IndexOf(source);
-                int to = siblings.IndexOf(target) + (IsBefore(direction) ? 0 : 1);
-                if (from < to)
-                    to--;
-                if (from == to)
-                    return false;
-                siblings.Move(from, to);
+                source.Parent!.Move(source.Parent.IndexOf(source), to);
                 return true;
             }
 
-            if (!CanSplitGroup(target, direction, source))
-                return false;
-
-            var oldParent = source.Parent;
+            var oldParent = source.Parent!;
             source.Remove();
             InsertGroup(target, source, direction);
             CollapseSplit(oldParent);

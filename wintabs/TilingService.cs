@@ -69,7 +69,10 @@ namespace wintabs
 
         internal TilingWorkspace TabWorkspace => m_backend;
         internal Action<TilingService, StackPanelNode, Point, bool>? ExternalGroupDrag { get; set; }
-        internal Action? ClearExternalGroupPreview { get; set; }
+        internal Func<TilingService, WindowNode, Point, bool, bool>? ExternalTabDrag { get; set; }
+        internal Action? ClearExternalDropPreview { get; set; }
+        /// <summary>Whether another display has the window as a tab.</summary>
+        internal Func<IWindow, bool>? IsTabElsewhere { get; set; }
 
 
         private static readonly TimeSpan LockThreshold = TimeSpan.FromMilliseconds(10);
@@ -129,7 +132,7 @@ namespace wintabs
             m_gui.TilingNodeCloseRequested += OnTilingNodeCloseRequested;
             m_gui.TabSplitRequested += OnTabSplitRequested;
             m_gui.GroupMoved += OnGroupMoved;
-            m_gui.DragCanceled += () => ClearExternalGroupPreview?.Invoke();
+            m_gui.DragCanceled += () => ClearExternalDropPreview?.Invoke();
             m_gui.DividerResized += OnDividerResized;
             m_gui.FloatRequested += OnWindowFloatRequested;
             m_gui.AlwaysFloatRequested += OnAlwaysFloatRequested;
@@ -313,7 +316,7 @@ namespace wintabs
                 {
                     try
                     {
-                        if (!m_backend.HasWindow(window) && window.State == WindowState.Restored && CanManage(window))
+                        if (!m_backend.HasWindow(window) && !IsInWindowGesture(window) && window.State == WindowState.Restored && CanManage(window))
                         {
                             m_logger.Debug("Discovered window {Window}", window.DebugString());
                             RegisterTab(window);

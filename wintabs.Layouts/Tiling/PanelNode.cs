@@ -61,6 +61,18 @@ namespace wintabs.Layouts.Tiling
             return originalNode;
         }
 
+        /// <summary>
+        /// Puts a detached node (possibly from another layout) in place of a child, keeping the child's share of
+        /// the space. Returns the child, now detached.
+        /// </summary>
+        public TilingNode Replace(TilingNode child, TilingNode replacement)
+        {
+            var original = ReplaceReference(IndexOf(child), replacement);
+            foreach (var window in replacement.Windows)
+                Desktop!.Register(window);
+            return original;
+        }
+
         public void Attach(TilingNode node)
         {
             Attach(Children.Count, node);

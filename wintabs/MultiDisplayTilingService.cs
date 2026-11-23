@@ -77,34 +77,37 @@ namespace wintabs
         {
             tiling.PlacementFailed += OnTilingFailed;
             tiling.ExternalGroupDrag = OnExternalGroupDrag;
-            tiling.ClearExternalGroupPreview = ClearExternalGroupPreview;
+            tiling.ExternalTabDrag = OnExternalTabDrag;
+            tiling.ClearExternalDropPreview = ClearExternalGroupPreview;
+            tiling.IsTabElsewhere = window => m_tilingServices.Values.Any(x => x != tiling && x.HasWindow(window));
         }
 
         private TilingService? m_groupPreviewDisplay;
 
         private void ClearExternalGroupPreview()
         {
-            m_groupPreviewDisplay?.SetExternalGroupPreview(false);
+            m_groupPreviewDisplay?.ClearGroupPreview();
             m_groupPreviewDisplay = null;
         }
 
+        // A group is dragged off its own display: the display under the cursor previews or takes the drop.
         private void OnExternalGroupDrag(TilingService source, StackPanelNode group, Point point, bool commit)
         {
-            var target = m_tilingServices.Values.FirstOrDefault(tiling => tiling != source &&
-                tiling.GetBounds().Contains(point) && tiling.IsEmptyOnCurrentDesktop());
-            if (commit)
-            {
-                ClearExternalGroupPreview();
-                if (target != null)
-                    source.TransferGroupTo(group, target);
-                return;
-            }
+            var target = m_tilingServices.Values.FirstOrDefault(tiling => tiling != source && tiling.GetBounds().Contains(point));
             if (target != m_groupPreviewDisplay)
-            {
                 ClearExternalGroupPreview();
-                m_groupPreviewDisplay = target;
-                target?.SetExternalGroupPreview(true);
-            }
+            m_groupPreviewDisplay = commit ? null : target;
+            target?.PreviewOrDropGroupFrom(source, group, point, commit);
+        }
+
+        // A tab's window is dragged off its own display: the display under the cursor previews or takes the drop.
+        private bool OnExternalTabDrag(TilingService source, WindowNode tab, Point point, bool commit)
+        {
+            var target = m_tilingServices.Values.FirstOrDefault(tiling => tiling != source && tiling.GetBounds().Contains(point));
+            if (target != m_groupPreviewDisplay)
+                ClearExternalGroupPreview();
+            m_groupPreviewDisplay = commit ? null : target;
+            return target?.PreviewOrDropTabFrom(source, tab, point, commit) == true;
         }
 
         private void OnDisplayRemoved(object? sender, DisplayChangedEventArgs e) => QueueDisplayUpdate();
