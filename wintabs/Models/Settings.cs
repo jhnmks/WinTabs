@@ -53,11 +53,8 @@ namespace wintabs.Models
             "Taskmgr"
         ];
 
-        public List<string> ClassIgnoreList { get; init; } =
-        [
-            "OperationStatusWindow",
-            "RAIL_WINDOW",
-        ];
+        // Built-in class rules live in FloatingWindows; this list is only the user's own.
+        public List<string> ClassIgnoreList { get; init; } = [];
 
         public bool MultiMonitorSupport { get; init; } = true;
 

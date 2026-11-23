@@ -46,6 +46,8 @@ namespace wintabs
         private readonly CompositeDisposable m_subscriptions;
         private readonly UnmanagedResourceGuard? m_unmanagedResourceGuard;
         private readonly ToastService m_toasts;
+        private readonly FloatingWindows m_floating;
+        private readonly FloatingWindowBar m_floatingBar;
 
         private readonly TimeSpan ToastDurationLong = TimeSpan.FromMilliseconds(3000);
         private readonly TimeSpan ToastDurationShort = TimeSpan.FromMilliseconds(1000);
@@ -86,6 +88,8 @@ namespace wintabs
             m_workspace.Open();
 
             m_toasts = new ToastService(m_workspace);
+            m_floating = new FloatingWindows(m_workspace);
+            m_floatingBar = new FloatingWindowBar(m_workspace, m_floating);
 
 
             m_workspace.VirtualDesktopManager.CurrentDesktopChanged += OnVirtualDesktopChanged;
@@ -109,11 +113,11 @@ namespace wintabs
                 {
                     if (multiMonitorSupport)
                     {
-                        m_tiling = new MultiDisplayTilingService(m_workspace, settings);
+                        m_tiling = new MultiDisplayTilingService(m_workspace, settings, m_floating);
                     }
                     else
                     {
-                        m_tiling = new TilingService(m_workspace, m_workspace.DisplayManager.PrimaryDisplay, settings, true);
+                        m_tiling = new TilingService(m_workspace, m_workspace.DisplayManager.PrimaryDisplay, settings, m_floating, true);
                     }
 
                     m_tiling.PlacementFailed += OnTilingFailed;
@@ -125,16 +129,7 @@ namespace wintabs
 
             var exclusionListSettings = settings
                 .DistinctUntilChanged(x => (x.ProcessIgnoreList, x.ClassIgnoreList))
-                .Do(async x => await Dispatcher.InvokeAsync(() =>
-                {
-                    var processMatchers = x.ProcessIgnoreList.Select(x => new ByProcessNameMatcher(x));
-                    var classMatchers = x.ClassIgnoreList.Select(x => new ByClassNameMatcher(x));
-                    m_tiling!.ExclusionMatchers = m_tiling.ExclusionMatchers
-                        .Where(m => m is not ByProcessNameMatcher && m is not ByClassNameMatcher)
-                        .Concat(processMatchers)
-                        .Concat(classMatchers)
-                        .ToArray();
-                }))
+                .Do(async x => await Dispatcher.InvokeAsync(() => m_floating.SetRules(x.ProcessIgnoreList, x.ClassIgnoreList)))
                 .Select(_ => Unit.Default);
 
             m_llkbdHook = App.Current.Services.GetRequiredService<LowLevelKeyboardHook>();
@@ -147,9 +142,9 @@ namespace wintabs
                 {
                     AppTheme.Apply(appearance);
                 })),
-                multiMonitorObservable
-                    .Concat(exclusionListSettings)
-                    .Subscribe(new NotifyUnhandledObserver<Unit>()),
+                // Rules first, so windows that already match never become tabs at startup.
+                exclusionListSettings.Subscribe(new NotifyUnhandledObserver<Unit>()),
+                multiMonitorObservable.Subscribe(new NotifyUnhandledObserver<Unit>()),
             ];
 
             m_notifyIcon = new TaskbarIcon
@@ -523,6 +518,8 @@ namespace wintabs
 
             m_logger.Debug($"Stopping the tiling window manager...");
             m_tiling?.Dispose();
+            m_floatingBar.Dispose();
+            m_floating.Dispose();
             m_logger.Debug($"Closing the workspace...");
             m_workspace?.Dispose();
             m_logger.Debug($"Closing all other subscriptions...");

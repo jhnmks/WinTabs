@@ -23,7 +23,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="These shortcuts work anywhere in Windows while WinTabs is running." TextWrapping="Wrap" />
                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                               Text="Press Ctrl + Win + / at any time for a quick reference. Changing the shortcuts will be possible in a future version." />
+                               Text="Press Ctrl + Alt + / at any time for a quick reference. Changing the shortcuts will be possible in a future version." />
                 </StackPanel>
             </DockPanel>
         </Border>

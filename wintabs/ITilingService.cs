@@ -3,8 +3,7 @@ using System.Threading.Tasks;
 
 using WinMan;
 using wintabs.Layouts.Tiling;
-using wintabs.Utilities;
-using System.Collections.Generic;
+
 
 namespace wintabs
 {
@@ -23,14 +22,10 @@ namespace wintabs
 
         IWorkspace Workspace { get; }
 
-
-
-        IReadOnlyCollection<IWindowMatcher> ExclusionMatchers { get; set; }
-
         bool DiscoverWindows();
         void Refresh();
         void SetWorkspacePaused(bool paused);
-        void Float();
+
         Task ToggleDesktopAsync();
         void CycleTab(int offset);
         void MoveTab(int offset);

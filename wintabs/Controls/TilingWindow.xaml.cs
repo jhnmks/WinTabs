@@ -42,6 +42,7 @@ namespace wintabs.Controls
 
         private void OnMoreClick(object sender, RoutedEventArgs e)
         {
+            ViewModel.UpdateMenu();
             MoreContextMenu.IsOpen = true;
             MoreContextMenu.DataContext = ViewModel;
             var child = (UIElement)VisualTreeHelper.GetChild(VisualTreeHelper.GetChild(MoreContextMenu, 0), 0);

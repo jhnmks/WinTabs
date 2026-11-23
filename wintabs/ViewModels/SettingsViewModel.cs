@@ -16,6 +16,8 @@ using Serilog;
 
 namespace wintabs.ViewModels
 {
+    public sealed record AlwaysFloatingApp(string Name, string ProcessName, ICommand RemoveCommand);
+
     public sealed class SettingsViewModel : ViewModelBase
     {
         private static readonly char[] AsciiWhitespaceChars = [' ', '\t', '\r', '\v', '\f', '\n'];
@@ -77,7 +79,37 @@ namespace wintabs.ViewModels
         public IReadOnlyList<FocusBorderSwatch> FocusBorderSwatches => FocusBorderPalette.Swatches;
         public string FocusBorderColor { get => m_focusBorderColor; set => SetField(ref m_focusBorderColor, FocusBorderPalette.Find(value).Name); }
 
-        public IList<string>? ProcessIgnoreList { get => m_processIgnoreList; set => SetField(ref m_processIgnoreList, value); }
+        public IList<string>? ProcessIgnoreList
+        {
+            get => m_processIgnoreList;
+            set
+            {
+                SetField(ref m_processIgnoreList, value);
+                AlwaysFloatingApps = [.. (value ?? []).Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => new AlwaysFloatingApp(AppNames.Describe(x), x, new DelegateCommand(_ => RemoveAlwaysFloatingApp(x))))
+                    .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)];
+                // Derived from ProcessIgnoreList, so it must not trigger a second save.
+                base.NotifyPropertyChanged(nameof(AlwaysFloatingApps));
+            }
+        }
+
+        /// <summary>The "Apps that always float" list: <see cref="ProcessIgnoreList"/> with readable names.</summary>
+        public IReadOnlyList<AlwaysFloatingApp> AlwaysFloatingApps { get; private set; } = [];
+
+        public void AddAlwaysFloatingApp(string processName)
+        {
+            processName = ByProcessNameMatcher.Normalize(processName);
+            if (processName.Length == 0 || ProcessIgnoreList == null ||
+                ProcessIgnoreList.Any(x => string.Equals(ByProcessNameMatcher.Normalize(x), processName, StringComparison.OrdinalIgnoreCase)))
+                return;
+            ProcessIgnoreList = [.. ProcessIgnoreList, processName];
+        }
+
+        private void RemoveAlwaysFloatingApp(string processName)
+        {
+            if (ProcessIgnoreList != null)
+                ProcessIgnoreList = [.. ProcessIgnoreList.Where(x => x != processName)];
+        }
 
         public IList<string>? ClassIgnoreList { get => m_classIgnoreList; set => SetField(ref m_classIgnoreList, value); }
 

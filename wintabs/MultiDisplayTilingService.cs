@@ -28,42 +28,28 @@ namespace wintabs
         private bool m_enabled;
         private bool m_workspacePaused;
 
-        public IReadOnlyCollection<IWindowMatcher> ExclusionMatchers
-        {
-            get => m_exclusionMatchers;
-            set
-            {
-                foreach (var tiling in m_tilingServices.Values)
-                {
-                    tiling.ExclusionMatchers = value;
-                }
-                m_exclusionMatchers = value;
-            }
-        }
 
         private readonly Dictionary<IDisplay, TilingService> m_tilingServices = [];
         private readonly CompositeDisposable m_subscriptions = [];
         private readonly Subject<Unit> m_focusedWindowLocationChanges = new();
         private readonly ILogger m_logger;
         private IDisplay m_activeDisplay;
-        private IReadOnlyCollection<IWindowMatcher> m_exclusionMatchers = [];
         private readonly IObservable<ITilingServiceSettings> m_settings;
+        private readonly FloatingWindows m_floating;
         private readonly object m_syncRoot = new();
 
-        public MultiDisplayTilingService(IWorkspace workspace, IObservable<ITilingServiceSettings> settings)
+        public MultiDisplayTilingService(IWorkspace workspace, IObservable<ITilingServiceSettings> settings, FloatingWindows floating)
         {
             Dispatcher = Dispatcher.CurrentDispatcher;
             Workspace = workspace;
             m_settings = settings;
+            m_floating = floating;
             m_logger = App.Current.Logger;
             m_logger.Information($"Using the multi-monitor tiling backend");
 
             foreach (var display in Workspace.DisplayManager.Displays)
             {
-                var tiling = new TilingService(Workspace, display, settings, true)
-                {
-                    ExclusionMatchers = m_exclusionMatchers,
-                };
+                var tiling = new TilingService(Workspace, display, settings, m_floating, true);
                 ConfigureDisplayService(tiling);
                 m_tilingServices.Add(display, tiling);
             }
@@ -156,10 +142,7 @@ namespace wintabs
                         continue;
 
                     returningWorkspaces.TryGetValue(display, out var previous);
-                    var tiling = new TilingService(Workspace, display, m_settings, true, previous, workspacePaused: resuming)
-                    {
-                        ExclusionMatchers = m_exclusionMatchers,
-                    };
+                    var tiling = new TilingService(Workspace, display, m_settings, m_floating, true, previous, workspacePaused: resuming);
                     ConfigureDisplayService(tiling);
                     m_tilingServices.Add(display, tiling);
                     if (m_enabled)
@@ -291,10 +274,6 @@ namespace wintabs
             }
         }
 
-        public void Float()
-        {
-            GetActiveTilingService().Float();
-        }
 
         public void SetWorkspacePaused(bool paused)
         {

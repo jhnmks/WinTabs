@@ -50,26 +50,35 @@ namespace wintabs.ViewModels
         private WindowNode? m_currentNode;
 
         public event RoutedEventHandler? FloatActionPressed;
-        public event RoutedEventHandler? IgnoreProcessPressed;
-        public event RoutedEventHandler? IgnoreClassPressed;
+        public event RoutedEventHandler? AlwaysFloatPressed;
 
         public ICommand FloatCommand { get; }
-        public ICommand IgnoreProcessCommand { get; }
-        public ICommand IgnoreClassCommand { get; }
+        public ICommand AlwaysFloatCommand { get; }
+
+        /// <summary>"Always float [App]", or "Stop always floating [App]" when the app is already on the list.</summary>
+        public string AlwaysFloatText { get => m_alwaysFloatText; private set => SetField(ref m_alwaysFloatText, value); }
+        private string m_alwaysFloatText = "Always float";
+
+        internal Func<IWindow, bool> IsAlwaysFloating { get; set; } = _ => false;
 
         public TilingWindowViewModel()
         {
             FloatCommand = new DelegateCommand(_ => FloatActionPressed?.Invoke(this, new RoutedEventArgs()));
-            IgnoreProcessCommand = new DelegateCommand(_ => IgnoreProcessPressed?.Invoke(this, new RoutedEventArgs()));
-            IgnoreClassCommand = new DelegateCommand(_ => IgnoreClassPressed?.Invoke(this, new RoutedEventArgs()));
+            AlwaysFloatCommand = new DelegateCommand(_ => AlwaysFloatPressed?.Invoke(this, new RoutedEventArgs()));
+        }
+
+        /// <summary>Refreshes the menu text just before the menu opens; the list can change at any time.</summary>
+        public void UpdateMenu()
+        {
+            if (Node is WindowNode node)
+                AlwaysFloatText = (IsAlwaysFloating(node.WindowReference) ? "Stop always floating " : "Always float ") + AppName;
         }
 
         public override void Dispose()
         {
             base.Dispose();
             FloatActionPressed = null;
-            IgnoreProcessPressed = null;
-            IgnoreClassPressed = null;
+            AlwaysFloatPressed = null;
             Node = null;
         }
 

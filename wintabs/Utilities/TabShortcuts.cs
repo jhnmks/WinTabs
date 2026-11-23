@@ -23,7 +23,7 @@ namespace wintabs.Utilities
     /// <item>Ctrl + Shift + arrow: move the focused tab one position within its group.</item>
     /// <item>Ctrl + Shift + 1-9: move the focused tab to the end of that numbered group.</item>
     /// <item>Ctrl + Alt + arrow: tile the focused tab beside its group in that direction.</item>
-    /// <item>Ctrl + Win + /: show or hide the shortcuts cheat sheet.</item>
+    /// <item>Ctrl + Alt + /: show or hide the shortcuts cheat sheet.</item>
     /// </list>
     /// </summary>
     internal sealed class TabShortcuts : IDisposable
@@ -35,13 +35,6 @@ namespace wintabs.Utilities
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         private static extern short GetAsyncKeyState(int vKey);
 
-        [DllImport("user32.dll")]
-        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, nuint dwExtraInfo);
-
-        private const uint KEYEVENTF_KEYUP = 0x0002;
-        // An unassigned virtual key: pressing it changes nothing except Windows' "Win was pressed alone" check.
-        private const byte VK_UNASSIGNED = 0xE8;
 
         public TabShortcuts(LowLevelKeyboardHook hook, Action<TabShortcutCommand> handler)
         {
@@ -62,15 +55,6 @@ namespace wintabs.Utilities
 
             // Swallow the key so the focused app (and Windows) never sees it.
             e.Handled = true;
-
-            // With the arrow swallowed, Windows would see Win pressed and released on its own and open the
-            // Start menu, stealing focus. A harmless key tap in between keeps the Start menu shut.
-            if (IsDown(KeyCode.LWin) || IsDown(KeyCode.RWin))
-            {
-                keybd_event(VK_UNASSIGNED, 0, 0, FocusHelper.InjectedInputTag);
-                keybd_event(VK_UNASSIGNED, 0, KEYEVENTF_KEYUP, FocusHelper.InjectedInputTag);
-            }
-
             m_handler(command);
         }
 
@@ -97,11 +81,11 @@ namespace wintabs.Utilities
                 };
             }
 
+            if (key == KeyCode.OemQuestion && ctrl && alt && !win && !shift)
+                return new(TabShortcut.CheatSheet);
+
             if (alt)
                 return null;
-
-            if (key == KeyCode.OemQuestion && ctrl && win && !shift)
-                return new(TabShortcut.CheatSheet);
 
             if (ctrl && shift && !win && ToGroupNumber(key) is int groupNumber)
                 return new(TabShortcut.MoveTabToGroup, GroupNumber: groupNumber);

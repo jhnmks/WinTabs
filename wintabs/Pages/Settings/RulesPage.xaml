@@ -5,27 +5,59 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:viewmodels="clr-namespace:wintabs.ViewModels"
-             xmlns:controls="clr-namespace:wintabs.Controls"
              d:DataContext="{d:DesignInstance Type=viewmodels:SettingsViewModel}"
              mc:Ignorable="d"
              d:DesignHeight="450" d:DesignWidth="800">
     <wtc:SpacedStackPanel MaxWidth="1000" Margin="{StaticResource SettingsPageMargin}" Spacing="4">
         <TextBlock Text="Rules" Style="{StaticResource SettingsPageTitleStyle}" />
 
-        <TextBlock Text="Floating windows" Style="{StaticResource SettingsSectionStyle}" />
+        <TextBlock Text="Apps that always float" Style="{StaticResource SettingsSectionStyle}" />
         <Border Style="{StaticResource SettingsItemStyle}">
             <StackPanel>
-                <TextBlock Text="Automatically float by process name" />
-                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Margin="0,2,0,12" Text="Floating mode will be automatically enabled for windows belonging to one of the processes. Enter one process name per line, excluding the &quot;.exe&quot; extension (e.g. &quot;explorer&quot;). The matching is not case-sensitive and you may use regular expressions." />
-                <controls:StringsListBox ItemsSource="{Binding ProcessIgnoreList, Mode=TwoWay}" />
+                <DockPanel>
+                    <Button x:Name="AddAppButton" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="16,0,0,0" Click="OnAddAppClick">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontFamily="Segoe MDL2 Assets" Text="&#xE710;" />
+                            <TextBlock Margin="8,0,0,0" Text="Add app" />
+                        </StackPanel>
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="RunningAppsMenu" Placement="Bottom" MaxHeight="400" />
+                        </Button.ContextMenu>
+                    </Button>
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Text="Windows of these apps open floating instead of in a tab. You can also choose &quot;Always float&quot; from the ⋯ button at the top of any window." />
+                </DockPanel>
+                <ItemsControl ItemsSource="{Binding AlwaysFloatingApps}" Margin="0,8,0,0" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,4,0,0">
+                                <Button DockPanel.Dock="Right" Background="Transparent" BorderThickness="0" Padding="8,4"
+                                        Command="{Binding RemoveCommand}" ToolTip="Stop always floating">
+                                    <TextBlock FontSize="12" FontFamily="Segoe MDL2 Assets" Text="&#xE711;" />
+                                </Button>
+                                <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
+                                <TextBlock VerticalAlignment="Center" Margin="8,0,0,0" Style="{StaticResource SettingsDescriptionStyle}"
+                                           Text="{Binding ProcessName, StringFormat={}{0}.exe}" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </Border>
-        <Border Style="{StaticResource SettingsItemStyle}">
+
+        <Expander Margin="0,16,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+            <Expander.Header>
+                <StackPanel>
+                    <TextBlock Text="Advanced: window class rules" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
+                               Text="For one kind of window inside an app, such as a dialog, instead of the whole app." />
+                </StackPanel>
+            </Expander.Header>
             <StackPanel>
-                <TextBlock Text="Automatically float by window class" />
-                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Margin="0,2,0,12" Text="Floating mode will be automatically enabled for windows with a matching window class. The matching is not case-sensitive and you may use regular expressions." />
-                <controls:StringsListBox ItemsSource="{Binding ClassIgnoreList, Mode=TwoWay}" />
+                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Margin="0,0,0,12"
+                           Text="Every window has a hidden technical name, its window class, chosen by the app's developer (for example &quot;#32770&quot; for standard dialogs). Windows whose class matches an entry here float. Not case-sensitive; regular expressions are allowed." />
+                <wtc:StringsListBox ItemsSource="{Binding ClassIgnoreList, Mode=TwoWay}" />
             </StackPanel>
-        </Border>
+        </Expander>
     </wtc:SpacedStackPanel>
 </UserControl>

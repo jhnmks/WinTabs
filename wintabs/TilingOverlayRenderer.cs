@@ -22,8 +22,8 @@ namespace wintabs
 
 
         public event EventHandler<WindowNode>? FloatRequested;
-        public event EventHandler<WindowNode>? IgnoreProcessRequested;
-        public event EventHandler<WindowNode>? IgnoreClassRequested;
+        public event EventHandler<WindowNode>? AlwaysFloatRequested;
+        public Func<IWindow, bool> IsAlwaysFloating { get; set; } = _ => false;
 
         public int PanelSpacing { get; set; }
         public Thickness PanelPadding { get; set; }
@@ -277,8 +277,8 @@ namespace wintabs
                         }, _ => windowNode.Parent?.Children.Count > 1),
                     };
                     windowViewModel.FloatActionPressed += WindowViewModel_FloatActionPressed;
-                    windowViewModel.IgnoreClassPressed += WindowViewModel_IgnoreClassPressed;
-                    windowViewModel.IgnoreProcessPressed += WindowViewModel_IgnoreProcessPressed;
+                    windowViewModel.AlwaysFloatPressed += WindowViewModel_AlwaysFloatPressed;
+                    windowViewModel.IsAlwaysFloating = window => IsAlwaysFloating(window);
                     UpdateViewModel(windowViewModel, windowNode, focusedPath);
                     m_nodeViewModels.Add(node, windowViewModel);
                     return windowViewModel;
@@ -302,14 +302,9 @@ namespace wintabs
             FloatRequested?.Invoke(this, (WindowNode)((TilingWindowViewModel)sender!).Node!);
         }
 
-        private void WindowViewModel_IgnoreProcessPressed(object sender, RoutedEventArgs e)
+        private void WindowViewModel_AlwaysFloatPressed(object sender, RoutedEventArgs e)
         {
-            IgnoreProcessRequested?.Invoke(this, ((WindowNode)((TilingWindowViewModel)sender!).Node!));
-        }
-
-        private void WindowViewModel_IgnoreClassPressed(object sender, RoutedEventArgs e)
-        {
-            IgnoreClassRequested?.Invoke(this, ((WindowNode)((TilingWindowViewModel)sender!).Node!));
+            AlwaysFloatRequested?.Invoke(this, (WindowNode)((TilingWindowViewModel)sender!).Node!);
         }
 
         private void OnSetPreviewRectangle(Rectangle? oldValue, Rectangle? newValue)
@@ -449,8 +444,7 @@ namespace wintabs
             TilingNodeCloseRequested = null;
 
             FloatRequested = null;
-            IgnoreProcessRequested = null;
-            IgnoreClassRequested = null;
+            AlwaysFloatRequested = null;
         }
     }
 }

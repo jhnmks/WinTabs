@@ -1,6 +1,6 @@
 ﻿# WinTabs
 
-WinTabs starts with one tab group per monitor and virtual desktop. Click a tab to focus its window. Use `Ctrl` + arrow to switch tabs, `Ctrl` + `Shift` + arrow to move a tab, `Ctrl` + `Shift` + `1`–`9` to send a tab to the end of that numbered group, and `Ctrl` + `Alt` + arrow to tile the active tab beside its group. Press `Ctrl` + `Win` + `/` for a cheat sheet of all shortcuts. Each group shows its number in a red badge; drag the badge to move the group.
+WinTabs starts with one tab group per monitor and virtual desktop. Click a tab to focus its window. Use `Ctrl` + arrow to switch tabs, `Ctrl` + `Shift` + arrow to move a tab, `Ctrl` + `Shift` + `1`–`9` to send a tab to the end of that numbered group, and `Ctrl` + `Alt` + arrow to tile the active tab beside its group. Press `Ctrl` + `Alt` + `/` for a cheat sheet of all shortcuts. Each group shows its number in a red badge; drag the badge to move the group.
 
 - **Tile:** Right-click a tab and choose **Tile left**, **Tile right**, **Tile above**, or **Tile below** to make a second group.
 - **Move a group:** Drag the circular handle or any empty space on its tab bar. Drop on another tab bar to swap groups, near the edge of another group's window area to tile beside it, or onto an empty monitor to move the entire group. Moving a group between monitors requires multi-monitor support.

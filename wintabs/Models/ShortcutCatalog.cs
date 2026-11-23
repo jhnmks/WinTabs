@@ -25,7 +25,7 @@ namespace wintabs.Models
                 "Moves the active tab to the end of the group with that number, shown in the red badge on each tab bar."),
             new("Tab groups", ["Ctrl", "Alt", "← ↑ → ↓"], "Tile the tab beside its group",
                 "Splits the active tab off into a new group on that side."),
-            new("WinTabs", ["Ctrl", "Win", "/"], "Show this cheat sheet",
+            new("WinTabs", ["Ctrl", "Alt", "/"], "Show this cheat sheet",
                 "Opens or closes a quick reference of these shortcuts."),
         ]);
 

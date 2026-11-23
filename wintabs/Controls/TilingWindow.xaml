@@ -12,19 +12,11 @@
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.ContextMenu>
         <ContextMenu x:Name="MoreContextMenu" Placement="Mouse">
-            <MenuItem Command="{Binding IgnoreProcessCommand}">
+            <MenuItem Command="{Binding AlwaysFloatCommand}">
                 <MenuItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE82E;" FontSize="15" Margin="0, 0, 10, 0" />
-                        <TextBlock Text="Add floating rule for process" />
-                    </StackPanel>
-                </MenuItem.Header>
-            </MenuItem>
-            <MenuItem Command="{Binding IgnoreClassCommand}">
-                <MenuItem.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE82E;" FontSize="15" Margin="0, 0, 10, 0" />
-                        <TextBlock Text="Add floating rule for window class" />
+                        <TextBlock Text="{Binding AlwaysFloatText}" />
                     </StackPanel>
                 </MenuItem.Header>
             </MenuItem>
@@ -63,8 +55,11 @@
             </Border.OpacityMask>
             <Border.Style>
                 <Style TargetType="Border">
+                    <!-- Every tab of a group has its bar in the same spot; only the shown one may take clicks. -->
+                    <Setter Property="IsHitTestVisible" Value="False" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding ActionsVisibility}" Value="Visible">
+                            <Setter Property="IsHitTestVisible" Value="True" />
                             <DataTrigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>

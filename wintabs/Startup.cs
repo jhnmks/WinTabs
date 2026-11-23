@@ -59,7 +59,7 @@ SHORTCUTS:
     Ctrl + Shift + Arrow      Move the tab one position
     Ctrl + Shift + 1-9        Move the tab to the end of that numbered group
     Ctrl + Alt + Arrow        Tile the tab beside its group
-    Ctrl + Win + /            Show the shortcuts cheat sheet
+    Ctrl + Alt + /            Show the shortcuts cheat sheet
 
 Type 'wintabs --help' from anywhere after installation.
 ");

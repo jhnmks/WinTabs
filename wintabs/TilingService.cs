@@ -71,29 +71,6 @@ namespace wintabs
         internal Action<TilingService, StackPanelNode, Point, bool>? ExternalGroupDrag { get; set; }
         internal Action? ClearExternalGroupPreview { get; set; }
 
-        public IReadOnlyCollection<IWindowMatcher> ExclusionMatchers
-        {
-            get => m_exclusionMatchers;
-            set
-            {
-                m_exclusionMatchers = [.. value];
-
-                using (m_windowSetLock.EnterScope())
-                {
-                    foreach (var window in m_windowSet)
-                    {
-                        if (m_exclusionMatchers.Any(x => x.Matches(window)))
-                        {
-                            using (m_floatingSetLock.EnterScope())
-                            {
-                                m_floatingSet.Add(window);
-                            }
-                        }
-                    }
-                }
-                Refresh();
-            }
-        }
 
         private static readonly TimeSpan LockThreshold = TimeSpan.FromMilliseconds(10);
 
@@ -103,7 +80,7 @@ namespace wintabs
         private readonly Dispatcher m_dispatcher;
         private readonly IWorkspace m_workspace;
         private readonly ILogger m_logger = App.Current.Logger;
-        private IReadOnlyCollection<IWindowMatcher> m_exclusionMatchers = [];
+        private readonly FloatingWindows m_floating;
 
         private readonly TilingOverlayRenderer m_gui;
         private readonly IDisplay m_display;
@@ -115,8 +92,6 @@ namespace wintabs
         private readonly HashSet<IWindow> m_windowSet = [];
         private readonly Utilities.DebugLock m_windowSetLock = new(LockThreshold);
 
-        private readonly HashSet<IWindow> m_floatingSet = [];
-        private readonly Utilities.DebugLock m_floatingSetLock = new(LockThreshold);
 
         private readonly Dictionary<IWindow, Rectangle> m_ignoreRepositionSet = [];
         private readonly Utilities.DebugLock m_ignoreRepositionSetLock = new(LockThreshold);
@@ -136,8 +111,9 @@ namespace wintabs
 
         private readonly Counter m_frozen = new();
 
-        public TilingService(IWorkspace workspace, IDisplay display, IObservable<ITilingServiceSettings> settings, bool autoRegisterWindows, TilingWorkspace? existingWorkspace = null, bool workspacePaused = false)
+        public TilingService(IWorkspace workspace, IDisplay display, IObservable<ITilingServiceSettings> settings, FloatingWindows floating, bool autoRegisterWindows, TilingWorkspace? existingWorkspace = null, bool workspacePaused = false)
         {
+            m_floating = floating;
             m_logger.Information("Managing display {Display} (Bounds: {Bounds}, Scale: {Scaling})", display, display.Bounds, display.Scaling);
             m_dispatcher = Dispatcher.CurrentDispatcher;
             m_workspace = workspace;
@@ -156,8 +132,9 @@ namespace wintabs
             m_gui.DragCanceled += () => ClearExternalGroupPreview?.Invoke();
             m_gui.DividerResized += OnDividerResized;
             m_gui.FloatRequested += OnWindowFloatRequested;
-            m_gui.IgnoreProcessRequested += OnWindowIgnoreProcessRequested;
-            m_gui.IgnoreClassRequested += OnWindowIgnoreClassRequested;
+            m_gui.AlwaysFloatRequested += OnAlwaysFloatRequested;
+            m_gui.IsAlwaysFloating = m_floating.IsAlwaysFloating;
+            m_floating.Changed += OnFloatingChanged;
 
             AutoRegisterWindows = autoRegisterWindows;
 
@@ -411,11 +388,6 @@ namespace wintabs
             }
         }
 
-        public void Float()
-        {
-            var window = m_workspace.FocusedWindow ?? throw new TilingFailedException(TilingError.MissingTarget);
-            ToggleFloat(window);
-        }
 
         public async Task ToggleDesktopAsync()
         {
@@ -464,6 +436,7 @@ namespace wintabs
             m_subscriptions.Dispose();
 
             PlacementFailed = null;
+            m_floating.Changed -= OnFloatingChanged;
 
             m_workspace.VirtualDesktopManager.DesktopAdded -= OnDesktopAdded;
             m_workspace.VirtualDesktopManager.DesktopRemoved -= OnDesktopRemoved;

@@ -213,40 +213,43 @@ namespace wintabs
             }
         }
 
-        private void ToggleFloat(IWindow window)
+        /// <summary>
+        /// A window started or stopped floating (float button, a rule added or removed, ...). Takes it out of this
+        /// display's tabs, or puts it back if it belongs on this display.
+        /// </summary>
+        private void OnFloatingChanged(object? sender, IWindow window)
         {
-            bool floated;
-            using (m_floatingSetLock.EnterScope())
+            // Always deferred: the change can be raised while this service holds its backend lock.
+            m_dispatcher.BeginInvoke(() => ApplyFloatingChange(window));
+        }
+
+        private void ApplyFloatingChange(IWindow window)
+        {
+            if (m_workspacePaused)
+                return;
+
+            try
             {
-                if (m_floatingSet.Contains(window))
+                if (m_floating.IsFloating(window))
                 {
-                    floated = false;
-                    m_floatingSet.Remove(window);
+                    bool wasTab;
+                    using (m_backendLock.EnterScope())
+                        wasTab = m_backend.HasWindow(window);
+                    if (!wasTab)
+                        return;
+                    DetectChanges(window);
+                    OnWindowFloated(window);
                 }
                 else
                 {
-                    floated = true;
-                    m_floatingSet.Add(window);
+                    DetectChanges(window);
                 }
             }
-            DetectChanges(window);
-            if (floated)
+            catch (InvalidWindowReferenceException)
             {
-                OnWindowFloated(window);
+                return;
             }
-            else
-            {
-                try
-                {
-                    using (m_backendLock.EnterScope())
-                    {
-                        m_backend.SetFocus(window);
-                    }
-                }
-                catch
-                {
-                }
-            }
+            InvalidateLayout();
         }
 
         private void OnDisplayWorkAreaChanged(object? sender, DisplayRectangleChangedEventArgs e)
@@ -263,10 +266,7 @@ namespace wintabs
         {
             if (e.FailReason == TilingError.NoValidPlacementExists && e.FailSource != null)
             {
-                using (m_floatingSetLock.EnterScope())
-                {
-                    m_floatingSet.Add(e.FailSource);
-                }
+                m_floating.Add(e.FailSource, FloatReason.DoesNotFit);
                 OnWindowFloated(e.FailSource);
             }
         }
@@ -326,22 +326,13 @@ namespace wintabs
 
         private void OnWindowFloatRequested(object? sender, WindowNode e)
         {
-            ToggleFloat(e.WindowReference);
+            m_floating.Add(e.WindowReference, FloatReason.Manual);
         }
 
-        private void OnWindowIgnoreProcessRequested(object? sender, WindowNode e)
+        private void OnAlwaysFloatRequested(object? sender, WindowNode e)
         {
-            App.Current.AppState.Settings.SaveAsync(x =>
-            {
-                return x with { ProcessIgnoreList = [.. x.ProcessIgnoreList, e.WindowReference.GetCachedProcessName()] };
-            });
-        }
-        private void OnWindowIgnoreClassRequested(object? sender, WindowNode e)
-        {
-            App.Current.AppState.Settings.SaveAsync(x =>
-            {
-                return x with { ClassIgnoreList = [.. x.ClassIgnoreList, ((WinMan.Windows.Win32Window)e.WindowReference).ClassName] };
-            });
+            var window = e.WindowReference;
+            _ = FloatingWindows.SetAlwaysFloatingAsync(window.GetCachedProcessName(), !m_floating.IsAlwaysFloating(window));
         }
 
         private void OnDesktopAdded(object? sender, DesktopChangedEventArgs e)
@@ -446,25 +437,11 @@ namespace wintabs
                         return;
                     BindEventHandlers(e.Source);
                 }
-                if (m_exclusionMatchers.Any(x => x.Matches(e.Source)))
-                {
-                    using (m_floatingSetLock.EnterScope())
-                    {
-                        m_floatingSet.Add(e.Source);
-                    }
-                }
+                m_floating.OnWindowAdded(e.Source, AutoRegisterWindows && m_autoFloatNewWindows);
 
                 if (!AutoRegisterWindows)
                 {
                     return;
-                }
-
-                if (m_autoFloatNewWindows)
-                {
-                    using (m_floatingSetLock.EnterScope())
-                    {
-                        m_floatingSet.Add(e.Source);
-                    }
                 }
 
                 if (!m_workspacePaused && CanManage(e.Source) && e.Source.State == WindowState.Restored)
@@ -536,10 +513,6 @@ namespace wintabs
                     m_backend.UnregisterWindow(e.Source);
                     InvalidateLayout();
                 }
-            }
-            using (m_floatingSetLock.EnterScope())
-            {
-                m_floatingSet.Remove(e.Source);
             }
         }
 
@@ -695,6 +668,7 @@ namespace wintabs
 
         // Another group closed and the numbers after it moved up; redraw this display's badges.
         private void OnGroupsRenumbered(object? sender, EventArgs e) => m_dispatcher.BeginInvoke(InvalidateLayout);
+
 
         internal bool HasWindow(IWindow window)
         {
@@ -1196,13 +1170,7 @@ namespace wintabs
                 return m_display.Equals(m_workspace.DisplayManager.PrimaryDisplay)
                     && !m_workspace.DisplayManager.Displays.Any(d => d.Bounds.Contains(pos));
             }
-            bool IsFloating()
-            {
-                using (m_floatingSetLock.EnterScope())
-                {
-                    return m_floatingSet.Contains(x);
-                }
-            }
+            bool IsFloating() => m_floating.IsFloating(x);
 
             // Cheap boolean read
             if (x.IsTopmost)
