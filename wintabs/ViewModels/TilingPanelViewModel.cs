@@ -19,6 +19,7 @@ namespace wintabs.ViewModels
         public ObservableCollection<TilingNodeViewModel> ChildNodes { get => m_childNodes; set => SetField(ref m_childNodes, value); }
 
         public ObservableCollection<TilingNodeViewModel> OuterTabs { get; } = [];
+        public ObservableCollection<TilingNodeViewModel> OuterTabsAfterUngrouped { get; } = [];
         public ObservableCollection<TilingNodeViewModel> WindowTabs { get; } = [];
         public ICommand? SelectUngroupedCommand { get; internal set; }
         public bool HasGroupRow { get => m_hasGroupRow; set => SetField(ref m_hasGroupRow, value); }

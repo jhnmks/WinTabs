@@ -12,6 +12,8 @@ namespace wintabs.Utilities
         MoveTab,
         CycleGroup,
         MoveGroup,
+        CreateGroup,
+        UnpackGroups,
         MoveTabToGroup,
         TileTab,
         CheatSheet,
@@ -35,6 +37,7 @@ namespace wintabs.Utilities
     {
         private readonly LowLevelKeyboardHook m_hook;
         private readonly Action<TabShortcutCommand> m_handler;
+        private readonly System.Collections.Generic.HashSet<KeyCode> m_heldGroupKeys = [];
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -55,19 +58,28 @@ namespace wintabs.Utilities
 
         private void OnKeyStateChanged(object? sender, ref LowLevelKeyboardHook.KeyStateChangedEventArgs e)
         {
+            if (m_heldGroupKeys.Contains(e.KeyCode))
+            {
+                if (!e.IsPressed)
+                    m_heldGroupKeys.Remove(e.KeyCode);
+                e.Handled = true;
+                return;
+            }
             if (!e.IsPressed || Match(e.KeyCode) is not TabShortcutCommand command)
                 return;
 
             // Swallow the key so the focused app (and Windows) never sees it.
             e.Handled = true;
-            if (command.Shortcut is TabShortcut.CycleGroup or TabShortcut.MoveGroup)
+            if (command.Shortcut is TabShortcut.CreateGroup or TabShortcut.UnpackGroups)
+                m_heldGroupKeys.Add(e.KeyCode);
+            if (command.Shortcut is TabShortcut.CycleGroup or TabShortcut.MoveGroup or TabShortcut.CreateGroup or TabShortcut.UnpackGroups)
                 SuppressStartMenu();
             m_handler(command);
         }
 
         private static void SuppressStartMenu()
         {
-            // The swallowed arrow must not leave a lone Win press that opens Start on release.
+            // The swallowed shortcut must not leave a lone Win press that opens Start on release.
             const ushort unassignedKey = 0xE8;
             INPUT[] input = new INPUT[2];
             input[0].type = input[1].type = INPUT_typeFlags.INPUT_KEYBOARD;
@@ -106,6 +118,12 @@ namespace wintabs.Utilities
                     _ => null,
                 };
             }
+
+            if (key == KeyCode.G && ctrl && win && !alt && !shift)
+                return new(TabShortcut.CreateGroup);
+
+            if (key == KeyCode.U && ctrl && win && !alt && !shift)
+                return new(TabShortcut.UnpackGroups);
 
             if (key == KeyCode.OemQuestion && ctrl && alt && !win && !shift)
                 return new(TabShortcut.CheatSheet);

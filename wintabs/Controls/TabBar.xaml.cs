@@ -23,6 +23,15 @@ namespace wintabs.Controls
             set => SetValue(ItemsSourceProperty, value);
         }
 
+        public static readonly DependencyProperty ItemsAfterUngroupedProperty = DependencyProperty.Register(
+            nameof(ItemsAfterUngrouped), typeof(ObservableCollection<TilingNodeViewModel>), typeof(TabBar));
+
+        public ObservableCollection<TilingNodeViewModel>? ItemsAfterUngrouped
+        {
+            get => (ObservableCollection<TilingNodeViewModel>?)GetValue(ItemsAfterUngroupedProperty);
+            set => SetValue(ItemsAfterUngroupedProperty, value);
+        }
+
         public static readonly DependencyProperty ShowUngroupedProperty = DependencyProperty.Register(
             nameof(ShowUngrouped), typeof(bool), typeof(TabBar));
 

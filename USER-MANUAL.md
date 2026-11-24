@@ -31,18 +31,26 @@ You can also right-click a window tab and choose **Tile left**, **Tile right**, 
 
 A tile is one area of the screen. It can hold one row of window tabs or several named groups. To move the whole tile, **drag a red number badge**, not a window’s title bar.
 
-- **Drop on another tile’s top tab strip to merge.** The two tiles become one, keeping their windows and named groups.
-- **Drop in the middle of another tile’s window area to swap.** The two tiles trade places; their tabs don’t mix.
-- **Drop near an edge of another tile to tile beside it.** Use the left, right, top, or bottom edge to place the whole tile on that side.
-- **Drop on an empty monitor to move the tile there.** You can also merge, swap, and tile across monitors when **Use tabs on all displays** is on.
+| Where you drop the badge | What happens |
+| --- | --- |
+| **Middle of another tile’s window area** | **Swap:** The two tiles trade places. Their tabs and named groups stay separate. |
+| **Another tile’s top tab strip** | **Merge:** The tiles become one, keeping their windows and named groups. |
+| **Left, right, top, or bottom edge of another tile** | **Tile beside it:** The dragged tile goes on that side. |
+| **An empty monitor** | **Move:** The whole tile moves to that screen. |
+
+**Try a swap:** With two tiles on screen, drag the red badge from one onto the middle of the other tile’s window, then let go. The tiles trade places. Dragging a window by its title bar moves only that window; it doesn’t swap tiles.
+
+You can also merge, swap, and tile across monitors when **Use tabs on all displays** is on.
 
 ## Keyboard shortcuts
 
 - `Ctrl + arrows`: Switch window tabs in the current row.
 - `Ctrl + Shift + arrows`: Move the active window tab one position in its row.
+- `Ctrl + Win + G`: Put the active window in a new group in the top row.
+- `Ctrl + Win + U`: Unpack all named groups on the current virtual desktop, across managed monitors. Windows stay open in their existing tiles as regular tabs.
 - `Ctrl + Win + arrows`: Switch groups in the top row, including Ungrouped.
-- `Ctrl + Win + Shift + arrows`: Move the active named group one position. Ungrouped stays last.
-- `Ctrl + Shift + 1–9`: Send the active window to the group with that red number, even on another monitor. Numbers are assigned screen by screen, with named groups first, standalone groups next, and Ungrouped last on each screen. They can change as groups move or close.
+- `Ctrl + Win + Shift + arrows`: Move the active group one position in the top row, including Ungrouped.
+- `Ctrl + Shift + 1–9`: Send the active window to the group with that red number, even on another monitor. The main screen uses odd numbers (1, 3, 5, …), and the second uses even numbers (2, 4, 6, …). On each screen, named groups come first, then standalone groups, then Ungrouped. With three or more screens, the extra screens share the even numbers. They can change as groups move or close.
 - `Ctrl + Alt + arrows`: Tile the active window on that side. Use up or down for a vertical split.
 - `Ctrl + Alt + /`: Show or hide the shortcut cheat sheet.
 

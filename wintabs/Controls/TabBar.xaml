@@ -10,32 +10,28 @@
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <DataTemplate x:Key="TabTemplate">
+            <local:TilingNodeTab HorizontalAlignment="Stretch" VerticalAlignment="Stretch" DataContext="{Binding}">
+                <local:TilingNodeTab.Style>
+                    <Style TargetType="local:TilingNodeTab">
+                        <Setter Property="Margin" Value="0,2,2,2" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsContainer}" Value="True">
+                                <Setter Property="Margin" Value="0,0,2,0" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </local:TilingNodeTab.Style>
+            </local:TilingNodeTab>
+        </DataTemplate>
+        <ItemsPanelTemplate x:Key="HorizontalTabs">
+            <StackPanel IsItemsHost="True" Orientation="Horizontal" />
+        </ItemsPanelTemplate>
     </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto">
         <StackPanel Orientation="Horizontal">
-            <ItemsControl ItemsSource="{Binding ItemsSource, RelativeSource={RelativeSource AncestorType=local:TabBar}}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <local:TilingNodeTab HorizontalAlignment="Stretch" VerticalAlignment="Stretch" DataContext="{Binding}">
-                            <local:TilingNodeTab.Style>
-                                <Style TargetType="local:TilingNodeTab">
-                                    <Setter Property="Margin" Value="0,2,2,2" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsContainer}" Value="True">
-                                            <Setter Property="Margin" Value="0,0,2,0" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </local:TilingNodeTab.Style>
-                        </local:TilingNodeTab>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel IsItemsHost="True" Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-            </ItemsControl>
+            <ItemsControl ItemsSource="{Binding ItemsSource, RelativeSource={RelativeSource AncestorType=local:TabBar}}"
+                          ItemTemplate="{StaticResource TabTemplate}" ItemsPanel="{StaticResource HorizontalTabs}" />
             <Button x:Name="UngroupedDropTab" Content="Ungrouped" Command="{Binding SelectUngroupedCommand}" Padding="6,0"
                     Margin="0,0,2,0" FontSize="{Binding Overlay.FontSize}" FontWeight="Bold"
                     Visibility="{Binding ShowUngrouped, RelativeSource={RelativeSource AncestorType=local:TabBar}, Converter={StaticResource BoolToVisibility}}">
@@ -78,6 +74,8 @@
                     </Style>
                 </Button.Style>
             </Button>
+            <ItemsControl ItemsSource="{Binding ItemsAfterUngrouped, RelativeSource={RelativeSource AncestorType=local:TabBar}}"
+                          ItemTemplate="{StaticResource TabTemplate}" ItemsPanel="{StaticResource HorizontalTabs}" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

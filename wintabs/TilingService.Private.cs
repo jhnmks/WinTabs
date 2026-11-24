@@ -75,7 +75,6 @@ namespace wintabs
                     return;
 
                 tree.WorkArea = GetLayoutWorkArea();
-                tree.DisplayBounds = m_display.Bounds;
                 if (tree.WorkArea.Width <= 0 || tree.WorkArea.Height <= GetPanelPaddingRect().Top)
                     return;
                 foreach (var container in tree.Root.Nodes.OfType<StackPanelNode>().Where(x => x.IsContainer))
@@ -348,7 +347,10 @@ namespace wintabs
             var orientation = m_display.Bounds.Width >= m_display.Bounds.Height ? PanelOrientation.Horizontal : PanelOrientation.Vertical;
             using (m_backendLock.EnterScope())
             {
-                m_backend.RegisterDesktop(e.Source, GetLayoutWorkArea(), orientation, m_display.Bounds);
+                m_backend.RegisterDesktop(e.Source, GetLayoutWorkArea(), orientation);
+                var tree = m_backend.GetTree(e.Source)!;
+                tree.GroupNumberLane = m_groupNumberLane;
+                tree.GroupNumberStride = m_groupNumberStride;
             }
         }
 

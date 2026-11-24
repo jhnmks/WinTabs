@@ -39,7 +39,8 @@
                 </Border>
 
                 <Grid>
-                    <local:TabBar ItemsSource="{Binding OuterTabs}" ShowUngrouped="{Binding HasUngroupedTabs}"
+                    <local:TabBar ItemsSource="{Binding OuterTabs}" ItemsAfterUngrouped="{Binding OuterTabsAfterUngrouped}"
+                                  ShowUngrouped="{Binding HasUngroupedTabs}"
                                   Visibility="{Binding HasGroupRow, Converter={StaticResource BoolToVisibility}}" />
                     <local:TabBar ItemsSource="{Binding WindowTabs}">
                         <local:TabBar.Style>

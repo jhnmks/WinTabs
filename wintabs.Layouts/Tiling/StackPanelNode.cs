@@ -25,6 +25,8 @@ namespace wintabs.Layouts.Tiling
         /// directly in a group and never hold other containers.
         /// </summary>
         public bool IsContainer => Parent is StackPanelNode;
+        public int UngroupedIndex { get; set; } = int.MaxValue;
+
         public bool HasContainers => !IsContainer && Children.Any(child => child is StackPanelNode);
 
         /// <summary>The name the user gave a container, or <c>null</c> to use its default title.</summary>

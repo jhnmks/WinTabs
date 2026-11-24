@@ -358,6 +358,12 @@ namespace wintabs
                     case TabShortcut.CycleGroup:
                         m_tiling.CycleGroup(offset);
                         break;
+                    case TabShortcut.CreateGroup:
+                        m_tiling.CreateGroup();
+                        break;
+                    case TabShortcut.UnpackGroups:
+                        m_tiling.UnpackGroups();
+                        break;
                     case TabShortcut.MoveGroup:
                         m_tiling.MoveGroup(offset);
                         break;
@@ -411,8 +417,7 @@ namespace wintabs
                 TilingError.MissingTarget => "No focused window!",
                 TilingError.TargetCannotFit => "Cannot fit in the target panel!",
                 TilingError.InvalidTarget => "The target panel does not support this operation!",
-                TilingError.NoActiveNamedGroup => "Select a named group in the top row first.",
-                TilingError.NoGroupInDirection => "There is no named group in that direction. Ungrouped stays last.",
+                TilingError.NoGroupInDirection => "There is no group in that direction in this row.",
                 TilingError.NestingInStackPanel => "Stack panel cannot contain other panels!",
                 _ => null,
             };

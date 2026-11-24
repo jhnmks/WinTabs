@@ -439,9 +439,20 @@ namespace wintabs
             if (HaveChildrenChanged(vm, node))
             {
                 var desired = node.Children.Select(GetViewModel).OfType<TilingNodeViewModel>().ToList();
-                SyncTabs(vm.OuterTabs, desired.Where(x => x is TilingPanelViewModel));
                 SyncTabs(vm.WindowTabs, desired.Where(x => x is TilingWindowViewModel));
                 SyncTabs(vm.ChildNodes, desired);
+            }
+            if (node is StackPanelNode outer && vm.HasGroupRow)
+            {
+                var groups = vm.ChildNodes.OfType<TilingPanelViewModel>().ToArray();
+                int index = vm.HasUngroupedTabs ? Math.Min(outer.UngroupedIndex, groups.Length) : groups.Length;
+                SyncTabs(vm.OuterTabs, groups.Take(index));
+                SyncTabs(vm.OuterTabsAfterUngrouped, groups.Skip(index));
+            }
+            else
+            {
+                vm.OuterTabs.Clear();
+                vm.OuterTabsAfterUngrouped.Clear();
             }
         }
 

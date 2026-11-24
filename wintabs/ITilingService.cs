@@ -29,6 +29,8 @@ namespace wintabs
         Task ToggleDesktopAsync();
         void CycleTab(int offset);
         void CycleGroup(int offset);
+        void CreateGroup();
+        void UnpackGroups();
         void MoveGroup(int offset);
         void MoveTab(int offset);
         void TileTab(TilingDirection direction);

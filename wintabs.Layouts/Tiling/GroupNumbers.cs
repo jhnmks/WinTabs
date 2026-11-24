@@ -4,11 +4,12 @@ using System.Linq;
 
 namespace wintabs.Layouts.Tiling
 {
-    /// <summary>Numbers nonempty tab rows by screen, then nested groups, standalone groups, and Ungrouped.</summary>
+    /// <summary>Numbers tab rows in each display’s sequence, with nested groups first and Ungrouped last.</summary>
     public static class GroupNumbers
     {
         private static readonly object s_lock = new();
         private static readonly List<StackPanelNode> s_order = [];
+        private static Dictionary<StackPanelNode, int> s_numbers = [];
 
         /// <summary>
         /// Raised when existing groups were renumbered (a group closed), so every display can refresh its badges.
@@ -24,20 +25,20 @@ namespace wintabs.Layouts.Tiling
             int number;
             lock (s_lock)
             {
-                renumbered = PruneStale();
+                s_order.RemoveAll(x => !IsNumbered(x));
                 if (IsNumbered(group) && !s_order.Contains(group))
                     s_order.Add(group);
-                var ordered = s_order.OrderBy(x => ScreenBounds(x).Left)
-                    .ThenBy(x => ScreenBounds(x).Top)
-                    .ThenBy(x => x.IsContainer ? 0 : x.HasContainers ? 2 : 1)
-                    .ToArray();
-                if (!s_order.SequenceEqual(ordered))
+
+                var next = new Dictionary<StackPanelNode, int>();
+                foreach (var display in s_order.GroupBy(x => x.Desktop!.GroupNumberLane))
                 {
-                    s_order.Clear();
-                    s_order.AddRange(ordered);
-                    renumbered = true;
+                    int position = 0;
+                    foreach (var row in display.OrderBy(x => x.IsContainer ? 0 : x.HasContainers ? 2 : 1))
+                        next.Add(row, display.Key + 1 + position++ * row.Desktop!.GroupNumberStride);
                 }
-                number = s_order.IndexOf(group) + 1;
+                renumbered = next.Any(x => s_numbers.TryGetValue(x.Key, out int previous) && previous != x.Value);
+                s_numbers = next;
+                number = next.GetValueOrDefault(group);
             }
 
             // Raised outside the lock so handlers may read numbers freely.
@@ -52,6 +53,7 @@ namespace wintabs.Layouts.Tiling
             lock (s_lock)
             {
                 s_order.Clear();
+                s_numbers.Clear();
             }
         }
 
@@ -62,22 +64,7 @@ namespace wintabs.Layouts.Tiling
                     s_order.Add(group);
         }
 
-        private static WinMan.Rectangle ScreenBounds(StackPanelNode group) =>
-            group.Desktop is { } tree ? tree.DisplayBounds ?? tree.WorkArea : default;
-
         private static bool IsNumbered(StackPanelNode group) => group.Desktop != null &&
             (group.IsContainer ? group.Children.Count != 0 : group.UngroupedSelectedTab != null);
-
-        // Drops groups that emptied or left their layout (closed, merged, display removed). Returns true if
-        // any group that stays numbered moved to a lower number as a result.
-        private static bool PruneStale()
-        {
-            int firstRemoved = s_order.FindIndex(group => !IsNumbered(group));
-            if (firstRemoved < 0)
-                return false;
-
-            s_order.RemoveAll(group => !IsNumbered(group));
-            return firstRemoved < s_order.Count;
-        }
     }
 }

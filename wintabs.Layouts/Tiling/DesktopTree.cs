@@ -33,7 +33,8 @@ namespace wintabs.Layouts.Tiling
         }
 
         public Rectangle WorkArea { get; set; }
-        public Rectangle? DisplayBounds { get; set; }
+        public int GroupNumberLane { get; set; }
+        public int GroupNumberStride { get; set; } = 2;
 
         private PanelNode? m_root;
         private Dictionary<IWindow, WindowNode> m_wnd2Node = [];

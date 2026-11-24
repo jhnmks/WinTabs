@@ -28,6 +28,18 @@ namespace wintabs.Tests
         }
 
         [TestMethod]
+        [DataRow(wintabs.Utilities.KeyCode.G, "CreateGroup")]
+        [DataRow(wintabs.Utilities.KeyCode.U, "UnpackGroups")]
+        public void GroupLetterShortcutsRequireCtrlAndWinWithNoOtherModifiers(wintabs.Utilities.KeyCode key, string expected)
+        {
+            Assert.AreEqual(expected,
+                wintabs.Utilities.TabShortcuts.Match(key, ctrl: true, alt: false, shift: false, win: true)?.Shortcut.ToString());
+            Assert.IsNull(wintabs.Utilities.TabShortcuts.Match(key, ctrl: false, alt: false, shift: false, win: true));
+            Assert.IsNull(wintabs.Utilities.TabShortcuts.Match(key, ctrl: true, alt: false, shift: false, win: false));
+            Assert.IsNull(wintabs.Utilities.TabShortcuts.Match(key, ctrl: true, alt: false, shift: true, win: true));
+        }
+
+        [TestMethod]
         public void SectionsStartWhereTheSectionChanges()
         {
             var all = ShortcutCatalog.All;
@@ -89,10 +101,16 @@ namespace wintabs.Tests
                     about.Arrange(new Rect(about.DesiredSize));
                     about.UpdateLayout();
                     var manual = (StackPanel)about.FindName("Manual");
-                    var guide = manual.Children.OfType<TextBlock>().ToArray();
+                    var guide = Descendants(manual).OfType<TextBlock>().ToArray();
                     Assert.AreEqual("WinTabs user guide", guide[0].Text);
                     Assert.IsTrue(guide.Any(t => t.Text == "Move, merge, or swap whole tiles"));
                     Assert.IsTrue(guide.Any(t => t.Text == "Let a window float"));
+                    var drops = manual.Children.OfType<Grid>().Single();
+                    Assert.AreEqual(5, drops.RowDefinitions.Count);
+                    Assert.IsTrue(Descendants(drops).OfType<TextBlock>().Any(t =>
+                        new System.Windows.Documents.TextRange(t.ContentStart, t.ContentEnd).Text.Contains("Swap:")));
+                    Assert.IsTrue(guide.Any(t =>
+                        new System.Windows.Documents.TextRange(t.ContentStart, t.ContentEnd).Text.Contains("Try a swap:")));
                     Assert.IsTrue(guide.Any(t => t.Inlines.OfType<System.Windows.Documents.Bold>().Any()));
                     Assert.IsFalse(guide.Any(t => t.Text.Contains("**") || t.Text.Contains('`')));
 
@@ -152,6 +170,12 @@ namespace wintabs.Tests
                     container.IsActiveTab = true;
                     Assert.AreEqual(1.0, workButton.Opacity);
                     Assert.IsTrue(Descendants(ungrouped).OfType<Border>().Any(b => ReferenceEquals(b.Background, Brushes.LightBlue) && IsShown(b)));
+
+                    group.OuterTabs.Clear();
+                    group.OuterTabsAfterUngrouped.Add(container);
+                    ungrouped.UpdateLayout();
+                    work = Descendants(ungrouped).OfType<TextBlock>().Single(t => t.Text == "Work" && IsShown(t));
+                    Assert.IsTrue(ungroupedButton.TranslatePoint(new Point(), ungrouped).X < work.TranslatePoint(new Point(), ungrouped).X);
                 }
                 catch (Exception e)
                 {

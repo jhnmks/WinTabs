@@ -54,6 +54,24 @@ namespace wintabs
 
         public IWorkspace Workspace => m_workspace;
 
+        private int m_groupNumberLane;
+        private int m_groupNumberStride = 2;
+
+        internal void SetGroupNumberSequence(int lane, int stride)
+        {
+            using (m_backendLock.EnterScope())
+            {
+                m_groupNumberLane = lane;
+                m_groupNumberStride = stride;
+                foreach (var tree in m_backend.Trees)
+                {
+                    tree.GroupNumberLane = lane;
+                    tree.GroupNumberStride = stride;
+                }
+            }
+            InvalidateLayout();
+        }
+
         internal TilingWorkspace TabWorkspace => m_backend;
         internal Action<TilingService, StackPanelNode, Point, bool>? ExternalGroupDrag { get; set; }
         internal Func<TilingService, WindowNode, Point, bool, bool>? ExternalTabDrag { get; set; }
@@ -269,6 +287,33 @@ namespace wintabs
             InvalidateLayout();
         }
 
+        public void CreateGroup()
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                SyncFocusToForeground();
+                if (m_backend.GetFocus(m_workspace.VirtualDesktopManager.CurrentDesktop) is not WindowNode tab ||
+                    m_backend.WrapInContainer(tab) == null)
+                    return;
+                SetShortcutFocus(tab);
+            }
+            InvalidateLayout();
+        }
+
+        public void UnpackGroups()
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                if (!m_backend.UnpackGroups(m_workspace.VirtualDesktopManager.CurrentDesktop))
+                    return;
+            }
+            InvalidateLayout();
+        }
+
         public void MoveGroup(int offset)
         {
             if (!Active || m_workspacePaused)
@@ -277,8 +322,6 @@ namespace wintabs
             {
                 SyncFocusToForeground();
                 var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
-                if (m_backend.GetFocus(desktop) is not WindowNode { Parent: StackPanelNode { IsContainer: true } })
-                    throw new TilingFailedException(TilingError.NoActiveNamedGroup);
                 if (!m_backend.MoveFocusedGroup(desktop, offset))
                     throw new TilingFailedException(TilingError.NoGroupInDirection);
             }

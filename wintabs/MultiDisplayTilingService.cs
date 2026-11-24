@@ -54,12 +54,14 @@ namespace wintabs
                 m_tilingServices.Add(display, tiling);
             }
 
+            UpdateGroupNumberSequences();
             m_activeDisplay = GetActiveDisplay() ?? Workspace.DisplayManager.PrimaryDisplay;
             m_tilingServices[m_activeDisplay].AutoRegisterWindows = true;
             m_tilingServices[m_activeDisplay].Refresh();
 
             Workspace.DisplayManager.Added += OnDisplayAdded;
             Workspace.DisplayManager.Removed += OnDisplayRemoved;
+            Workspace.DisplayManager.PrimaryDisplayChanged += OnPrimaryDisplayChanged;
 
             Workspace.FocusedWindowChanged += OnFocusedWindowChanged;
             m_subscriptions.Add(Disposable.Create(() => Workspace.FocusedWindowChanged -= OnFocusedWindowChanged));
@@ -112,6 +114,8 @@ namespace wintabs
 
         private void OnDisplayRemoved(object? sender, DisplayChangedEventArgs e) => QueueDisplayUpdate();
 
+        private void OnPrimaryDisplayChanged(object? sender, PrimaryDisplayChangedEventArgs e) => QueueDisplayUpdate();
+
         private void OnDisplayAdded(object? sender, DisplayChangedEventArgs e) => QueueDisplayUpdate();
 
         private void QueueDisplayUpdate() => Dispatcher.InvokeAsync(() =>
@@ -153,8 +157,20 @@ namespace wintabs
                         tiling.Start();
                 }
 
+                UpdateGroupNumberSequences();
                 UpdateActiveDisplay();
             }
+        }
+
+        private void UpdateGroupNumberSequences()
+        {
+            var primary = Workspace.DisplayManager.PrimaryDisplay;
+            var displays = m_tilingServices.Keys.OrderBy(display => !display.Equals(primary))
+                .ThenBy(display => display.Bounds.Left).ThenBy(display => display.Bounds.Top).ToArray();
+            int secondaryStride = 2 * Math.Max(1, displays.Length - 1);
+            for (int i = 0; i < displays.Length; i++)
+                m_tilingServices[displays[i]].SetGroupNumberSequence(i == 0 ? 0 : 2 * i - 1,
+                    i == 0 ? 2 : secondaryStride);
         }
 
         private void OnWindowPositionChanged(object? sender, WindowPositionChangedEventArgs e)
@@ -247,6 +263,7 @@ namespace wintabs
             {
                 Workspace.DisplayManager.Added -= OnDisplayAdded;
                 Workspace.DisplayManager.Removed -= OnDisplayRemoved;
+                Workspace.DisplayManager.PrimaryDisplayChanged -= OnPrimaryDisplayChanged;
                 m_subscriptions.Dispose();
                 foreach (var tiling in m_tilingServices.Values)
                     tiling.Dispose();
@@ -322,6 +339,14 @@ namespace wintabs
         }
 
         public void CycleGroup(int offset) => GetFocusedTabService().CycleGroup(offset);
+
+        public void CreateGroup() => GetFocusedTabService().CreateGroup();
+
+        public void UnpackGroups()
+        {
+            foreach (var tiling in m_tilingServices.Values)
+                tiling.UnpackGroups();
+        }
 
         public void MoveGroup(int offset) => GetFocusedTabService().MoveGroup(offset);
 

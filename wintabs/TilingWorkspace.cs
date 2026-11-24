@@ -28,7 +28,6 @@ namespace wintabs
         TargetCannotFit,
         PullsBeyondTopLevelPanel,
         NestingInStackPanel,
-        NoActiveNamedGroup,
         NoGroupInDirection,
     }
 
@@ -128,13 +127,12 @@ namespace wintabs
             return tabsOnly ? new StackPanelNode() : new SplitPanelNode { Orientation = orientation };
         }
 
-        public void RegisterDesktop(IVirtualDesktop virtualDesktop, Rectangle workArea, PanelOrientation orientation, Rectangle? displayBounds = null)
+        public void RegisterDesktop(IVirtualDesktop virtualDesktop, Rectangle workArea, PanelOrientation orientation)
         {
             var tree = new DesktopTree
             {
                 Root = CreateRoot(orientation),
                 WorkArea = workArea,
-                DisplayBounds = displayBounds,
             };
             m_states.AddState(virtualDesktop, new DesktopState
             {
@@ -351,16 +349,15 @@ namespace wintabs
         }
 
         /// <summary>
-        /// Puts a tab in a new container before the regular window tabs. Containers
-        /// stay until their last tab leaves. Tabs inside a container cannot be nested further.
+        /// Moves a tab to a new group in the outer row, even if it already belongs to another group.
         /// </summary>
         public StackPanelNode? WrapInContainer(WindowNode tab)
         {
-            if (tab.Parent is not StackPanelNode { IsContainer: false } group)
+            if (GetGroup(tab) is not { } group || group.Desktop == null)
                 return null;
             var container = new StackPanelNode { Padding = group.Padding, Spacing = group.Spacing };
-            bool selected = group.SelectedChild == tab;
-            group.Detach(tab);
+            bool selected = group.SelectedTab == tab;
+            DetachTab(tab);
             AttachContainer(group, container);
             container.Attach(tab);
             if (selected)
@@ -404,6 +401,18 @@ namespace wintabs
             if (selected != null)
                 group.SelectTab(selected);
             return true;
+        }
+
+        public bool UnpackGroups(IVirtualDesktop desktop)
+        {
+            if (GetTree(desktop)?.Root is not { } root)
+                return false;
+
+            var containers = root.Nodes.OfType<StackPanelNode>().Where(row => row.IsContainer).ToArray();
+            // Unpack inserts windows before the regular tabs, so work backwards to keep the groups in order.
+            for (int i = containers.Length - 1; i >= 0; i--)
+                Unpack(containers[i]);
+            return containers.Length != 0;
         }
 
         public (StackPanelNode Group, TilingDirection? Edge)? GetTabDropTarget(WindowNode tab, Point point, bool dropOnUngrouped = false)
@@ -1338,29 +1347,42 @@ namespace wintabs
             if (GetFocus(desktop) is not WindowNode focused || GetGroup(focused) is not { HasContainers: true } group)
                 return null;
 
-            var containers = group.Children.OfType<StackPanelNode>().ToList();
-            var ungrouped = group.UngroupedSelectedTab;
-            int count = containers.Count + (ungrouped != null ? 1 : 0);
-            if (count < 2)
+            var rows = GetOuterRows(group);
+            if (rows.Count < 2)
                 return null;
 
-            int from = focused.Parent is StackPanelNode { IsContainer: true } current ? containers.IndexOf(current) : containers.Count;
-            int to = ((from + offset) % count + count) % count;
-            return to == containers.Count ? ungrouped : containers[to].SelectedTab;
+            int from = rows.IndexOf((StackPanelNode)focused.Parent!);
+            int to = ((from + offset) % rows.Count + rows.Count) % rows.Count;
+            return rows[to] == group ? group.UngroupedSelectedTab : rows[to].SelectedTab;
+        }
+
+        private static List<StackPanelNode> GetOuterRows(StackPanelNode group)
+        {
+            var rows = group.Children.OfType<StackPanelNode>().ToList();
+            if (group.UngroupedSelectedTab != null)
+                rows.Insert(Math.Min(group.UngroupedIndex, rows.Count), group);
+            return rows;
         }
 
         public bool MoveFocusedGroup(IVirtualDesktop desktop, int offset)
         {
-            if (GetFocus(desktop) is not WindowNode { Parent: StackPanelNode { IsContainer: true } container } ||
-                container.Parent is not StackPanelNode group)
+            if (GetFocus(desktop) is not WindowNode focused || GetGroup(focused) is not { HasContainers: true } group)
                 return false;
 
-            int from = group.IndexOf(container);
+            var rows = GetOuterRows(group);
+            var source = (StackPanelNode)focused.Parent!;
+            int from = rows.IndexOf(source);
             int to = from + offset;
-            if (to < 0 || to >= group.Children.Count || group.Children[to] is not StackPanelNode)
+            if (to < 0 || to >= rows.Count || to == from)
                 return false;
 
-            group.Move(from, to);
+            var target = rows[to];
+            if (source == group)
+                group.UngroupedIndex = to;
+            else if (target == group)
+                group.UngroupedIndex = from;
+            else
+                group.Move(group.IndexOf(source), group.IndexOf(target));
             return true;
         }
 
