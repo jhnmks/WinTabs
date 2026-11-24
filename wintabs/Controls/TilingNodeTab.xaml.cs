@@ -4,7 +4,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
-using wintabs.Models;
 using wintabs.Utilities;
 
 using wintabs.ViewModels;
@@ -67,27 +66,6 @@ namespace wintabs.Controls
             TileLeft.Visibility = TileRight.Visibility = TileAbove.Visibility = TileBelow.Visibility = window;
             WrapItem.Visibility = canWrap ? Visibility.Visible : Visibility.Collapsed;
             RenameItem.Visibility = UnpackItem.Visibility = container ? Visibility.Visible : Visibility.Collapsed;
-            GroupColorItem.Visibility = container ? Visibility.Visible : Visibility.Collapsed;
-            GroupColorItem.Items.Clear();
-            if (DataContext is TilingPanelViewModel { IsContainer: true, Node: StackPanelNode groupNode } panel)
-            {
-                AddColorOption("Default", null);
-                foreach (var swatch in FocusBorderPalette.Swatches)
-                    AddColorOption(swatch.Name, swatch.Name, swatch.CreateBrush(AppTheme.IsDark));
-
-                void AddColorOption(string title, string? color, System.Windows.Media.Brush? brush = null)
-                {
-                    GroupColorItem.Items.Add(new MenuItem
-                    {
-                        Header = title,
-                        IsCheckable = true,
-                        IsChecked = color == groupNode.ContainerColor,
-                        Icon = brush == null ? null : new Border { Background = brush, Width = 12, Height = 12, CornerRadius = new CornerRadius(2) },
-                        Command = panel.GroupColorCommand,
-                        CommandParameter = color,
-                    });
-                }
-            }
             MoveToContainerItem.Items.Clear();
             if (DataContext is TilingWindowViewModel { Node: WindowNode tab, MoveToContainer: { } move } &&
                 TilingWorkspace.GetGroup(tab) is { } group)

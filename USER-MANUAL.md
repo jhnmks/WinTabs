@@ -24,7 +24,7 @@ You can also right-click a window tab and choose **Tile left**, **Tile right**, 
 
 - **Create a group.** Right-click a window tab and choose **Put in new Group**. The top row shows your groups, and the bottom row shows the windows in the group you’ve selected. Windows outside named groups appear under **Ungrouped**.
 - **Add a window.** Right-click its tab and choose **Move to group**, or drag its title bar onto a named group tab or into the middle of the tile while that group is selected.
-- **Rename or color a group.** Double-click its tab to rename it, or right-click and choose **Rename group** or **Group color**. Names and colors last while the group exists.
+- **Rename a group.** Double-click its tab, or right-click and choose **Rename group**.
 - **Take windows out.** Drop a window on **Ungrouped** if it’s visible. To take every window out at once, right-click the named group and choose **Unpack group**. This doesn’t close any windows. An empty named group disappears.
 
 ## Move, merge, or swap whole tiles

@@ -34,10 +34,6 @@ namespace wintabs.ViewModels
 
         /// <summary>"Put in new Group" on a window's tab; only for tabs that are not in a container yet.</summary>
         public ICommand? WrapInContainerCommand { get; internal set; }
-        public ICommand? GroupColorCommand { get; internal set; }
-        public Brush? GroupColorBrush { get => m_groupColorBrush; set => SetField(ref m_groupColorBrush, value); }
-        private Brush? m_groupColorBrush;
-
         public ICommand? RenameCommand { get; internal set; }
         public ICommand? UnpackCommand { get; internal set; }
         public bool IsContainer { get => m_isContainer; set => SetField(ref m_isContainer, value); }
@@ -55,7 +51,6 @@ namespace wintabs.ViewModels
             CloseCommand = null;
             SplitTabCommand = null;
             WrapInContainerCommand = null;
-            GroupColorCommand = null;
             RenameCommand = null;
             UnpackCommand = null;
         }

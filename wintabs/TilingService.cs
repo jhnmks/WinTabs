@@ -139,7 +139,6 @@ namespace wintabs
             m_gui.WrapInContainerRequested += OnWrapInContainerRequested;
             m_gui.MoveToContainerRequested += OnMoveToContainerRequested;
             m_gui.RenameContainerRequested += OnRenameContainerRequested;
-            m_gui.GroupColorRequested += OnGroupColorRequested;
             m_gui.UnpackContainerRequested += OnUnpackContainerRequested;
             m_gui.GroupMoved += OnGroupMoved;
             m_gui.DragCanceled += () => ClearExternalDropPreview?.Invoke();

@@ -57,7 +57,6 @@ namespace wintabs
         internal event Action<WindowNode>? WrapInContainerRequested;
         internal event Action<WindowNode, StackPanelNode>? MoveToContainerRequested;
         internal event Action<StackPanelNode>? RenameContainerRequested;
-        internal event Action<StackPanelNode, string?>? GroupColorRequested;
         internal event Action<StackPanelNode>? UnpackContainerRequested;
         internal event Action? DragCanceled;
         internal event Action<WindowNode, TilingDirection>? TabSplitRequested;
@@ -181,9 +180,6 @@ namespace wintabs
                 .CreateBrush(AppTheme.IsDark);
             m_viewModel.FontSize = m_display.Scaling * m_panelFontSize;
             m_viewModel.IconSize = m_display.Scaling * m_panelFontSize;
-            foreach (var (node, vm) in m_nodeViewModels)
-                if (node is StackPanelNode { IsContainer: true } group)
-                    UpdateGroupColor(vm, group);
         }
 
         private Rectangle AdjustForDisplay(Rectangle rectangle)
@@ -271,7 +267,6 @@ namespace wintabs
                             if (panelNode.UngroupedSelectedTab is { } tab)
                                 TilingNodeFocusRequested?.Invoke(this, tab);
                         }),
-                        GroupColorCommand = new ViewModels.DelegateCommand(color => GroupColorRequested?.Invoke(panelNode, color as string)),
                         RenameCommand = new ViewModels.DelegateCommand(_ => RenameContainerRequested?.Invoke(panelNode)),
                         UnpackCommand = new ViewModels.DelegateCommand(_ => UnpackContainerRequested?.Invoke(panelNode)),
                         BeginGroupDrag = (start, click) => m_overlay.BeginDrag(start,
@@ -415,7 +410,6 @@ namespace wintabs
             vm.IsContainer = container != null;
             vm.CloseCommand = vm.IsContainer ? null : m_panelItemCloseActionCommand;
             vm.Title = container?.ContainerTitle ?? "";
-            UpdateGroupColor(vm, container);
 
             // A group's bar sits in the padding above its windows; a container's bar is the strip its own padding
             // reserves inside the group, and only shows while the container is the group's selected tab.
@@ -454,12 +448,6 @@ namespace wintabs
                 vm.OuterTabs.Clear();
                 vm.OuterTabsAfterUngrouped.Clear();
             }
-        }
-
-        private static void UpdateGroupColor(TilingNodeViewModel vm, StackPanelNode? group)
-        {
-            vm.GroupColorBrush = group?.ContainerColor is { } color
-                ? Models.FocusBorderPalette.Find(color).CreateBrush(AppTheme.IsDark) : null;
         }
 
         private static void SyncTabs(System.Collections.ObjectModel.ObservableCollection<TilingNodeViewModel> tabs,

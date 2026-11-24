@@ -581,19 +581,6 @@ namespace wintabs
             InvalidateLayout();
         }
 
-        private void OnGroupColorRequested(StackPanelNode group, string? color)
-        {
-            if (!Active || m_workspacePaused)
-                return;
-            using (m_backendLock.EnterScope())
-            {
-                if (!group.IsContainer || group.Desktop == null)
-                    return;
-                group.ContainerColor = color;
-            }
-            InvalidateLayout();
-        }
-
         private void OnUnpackContainerRequested(StackPanelNode container)
         {
             if (!Active || m_workspacePaused)

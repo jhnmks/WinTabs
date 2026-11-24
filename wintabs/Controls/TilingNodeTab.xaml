@@ -67,7 +67,6 @@
                     <MenuItem x:Name="WrapItem" Header="Put in new Group" Command="{Binding WrapInContainerCommand}" />
                     <MenuItem x:Name="MoveToContainerItem" Header="Move to group" />
                     <MenuItem x:Name="RenameItem" Header="Rename group" Command="{Binding RenameCommand}" />
-                    <MenuItem x:Name="GroupColorItem" Header="Group color" />
                     <MenuItem x:Name="UnpackItem" Header="Unpack group" Command="{Binding UnpackCommand}" />
                 </ContextMenu>
             </Button.ContextMenu>
@@ -91,9 +90,8 @@
                         <DataTemplate DataType="{x:Type viewmodels:TilingWindowViewModel}">
                             <TextBlock Text="{Binding AppName}" FontSize="{Binding Overlay.FontSize}" VerticalAlignment="Center" />
                         </DataTemplate>
-                        <!-- The group tint stays visible even when another group is selected. -->
                         <DataTemplate DataType="{x:Type viewmodels:TilingPanelViewModel}">
-                            <Border Background="{Binding GroupColorBrush}" CornerRadius="4" Padding="4,0">
+                            <Border Padding="4,0">
                                 <StackPanel Orientation="Horizontal" TextBlock.FontWeight="Bold">
                                     <Border Style="{StaticResource GroupNumberBadgeStyle}" Margin="0,0,5,0"
                                             PreviewMouseLeftButtonDown="OnGroupNumberMouseDown">

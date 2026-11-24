@@ -32,8 +32,6 @@ namespace wintabs.Layouts.Tiling
         /// <summary>The name the user gave a container, or <c>null</c> to use its default title.</summary>
         public string? Name { get; set; }
 
-        public string? ContainerColor { get; set; }
-
         public string ContainerTitle => Name ?? $"Group {GroupNumber}";
 
         /// <summary>

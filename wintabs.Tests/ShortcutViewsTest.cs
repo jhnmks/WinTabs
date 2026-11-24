@@ -116,7 +116,7 @@ namespace wintabs.Tests
 
                     var overlay = new ViewModels.TilingOverlayViewModel { FontSize = 12, IconSize = 12 };
                     var group = new ViewModels.TilingPanelViewModel { Overlay = overlay, GroupNumber = 1, HasGroupRow = true };
-                    var container = new ViewModels.TilingPanelViewModel { Overlay = overlay, IsContainer = true, Title = "Work", GroupNumber = 2, GroupColorBrush = Brushes.LightBlue };
+                    var container = new ViewModels.TilingPanelViewModel { Overlay = overlay, IsContainer = true, Title = "Work", GroupNumber = 2 };
                     container.WindowTabs.Add(new ViewModels.TilingWindowViewModel { Overlay = overlay, AppName = "Editor" });
                     group.OuterTabs.Add(container);
                     group.WindowTabs.Add(new ViewModels.TilingWindowViewModel { Overlay = overlay, AppName = "Loose app" });
@@ -169,7 +169,6 @@ namespace wintabs.Tests
                     }
                     container.IsActiveTab = true;
                     Assert.AreEqual(1.0, workButton.Opacity);
-                    Assert.IsTrue(Descendants(ungrouped).OfType<Border>().Any(b => ReferenceEquals(b.Background, Brushes.LightBlue) && IsShown(b)));
 
                     group.OuterTabs.Clear();
                     group.OuterTabsAfterUngrouped.Add(container);
