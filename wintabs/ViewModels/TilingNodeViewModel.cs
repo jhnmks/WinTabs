@@ -32,6 +32,20 @@ namespace wintabs.ViewModels
 
         public ICommand? SplitTabCommand { get; internal set; }
 
+        /// <summary>"Put in new Group" on a window's tab; only for tabs that are not in a container yet.</summary>
+        public ICommand? WrapInContainerCommand { get; internal set; }
+        public ICommand? GroupColorCommand { get; internal set; }
+        public Brush? GroupColorBrush { get => m_groupColorBrush; set => SetField(ref m_groupColorBrush, value); }
+        private Brush? m_groupColorBrush;
+
+        public ICommand? RenameCommand { get; internal set; }
+        public ICommand? UnpackCommand { get; internal set; }
+        public bool IsContainer { get => m_isContainer; set => SetField(ref m_isContainer, value); }
+        private bool m_isContainer;
+
+        public bool CanWrapInContainer { get => m_canWrapInContainer; set => SetField(ref m_canWrapInContainer, value); }
+        private bool m_canWrapInContainer;
+
 #pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
         public override void Dispose()
 #pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
@@ -40,14 +54,16 @@ namespace wintabs.ViewModels
             PrimaryActionCommand = null;
             CloseCommand = null;
             SplitTabCommand = null;
+            WrapInContainerCommand = null;
+            GroupColorCommand = null;
+            RenameCommand = null;
+            UnpackCommand = null;
         }
 
         private BitmapSource? GetCachedImageSource()
         {
             if (m_node is not WindowNode windowNode)
-            {
                 return null;
-            }
 
             var window = windowNode.WindowReference;
             return window.GetCachedIcon();

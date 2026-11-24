@@ -131,12 +131,13 @@ namespace wintabs
                     if (displays.Any(current => ReferenceEquals(current, display)))
                         continue;
 
-                    if (displays.Contains(display))
+                    bool preserveWorkspace = displays.Contains(display);
+                    if (preserveWorkspace)
                         returningWorkspaces.Add(display, tiling.TabWorkspace);
                     if (m_groupPreviewDisplay == tiling)
                         ClearExternalGroupPreview();
                     m_tilingServices.Remove(display);
-                    tiling.Dispose();
+                    tiling.Dispose(preserveWorkspace);
                 }
 
                 foreach (var display in displays)
@@ -319,6 +320,10 @@ namespace wintabs
         {
             GetFocusedTabService().CycleTab(offset);
         }
+
+        public void CycleGroup(int offset) => GetFocusedTabService().CycleGroup(offset);
+
+        public void MoveGroup(int offset) => GetFocusedTabService().MoveGroup(offset);
 
         public bool MoveTabToGroup(int groupNumber)
         {

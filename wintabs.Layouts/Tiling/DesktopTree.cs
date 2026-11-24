@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -33,6 +33,7 @@ namespace wintabs.Layouts.Tiling
         }
 
         public Rectangle WorkArea { get; set; }
+        public Rectangle? DisplayBounds { get; set; }
 
         private PanelNode? m_root;
         private Dictionary<IWindow, WindowNode> m_wnd2Node = [];

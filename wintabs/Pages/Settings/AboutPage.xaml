@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="wintabs.Pages.Settings.AboutPage"
+<UserControl x:Class="wintabs.Pages.Settings.AboutPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wtc="clr-namespace:wintabs.Controls"
@@ -7,7 +7,7 @@
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="800">
     <wtc:SpacedStackPanel MaxWidth="1000" Margin="{StaticResource SettingsPageMargin}" Spacing="4">
-        <TextBlock Text="About" Style="{StaticResource SettingsPageTitleStyle}" />
+        <TextBlock Text="User guide" Style="{StaticResource SettingsPageTitleStyle}" />
 
         <Border Style="{StaticResource SettingsItemStyle}" Padding="20">
             <StackPanel>
@@ -18,40 +18,14 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Text="What it does" Style="{StaticResource SettingsSectionStyle}" />
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <StackPanel>
-                <TextBlock Text="Tab groups" />
-                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                           Text="Every window you open joins a tab group. All tabs in a group share the same space on screen, and a tab bar along the top lets you switch between them. Each group carries a number in a red badge so you can tell groups apart and target them from the keyboard." />
-            </StackPanel>
-        </Border>
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <StackPanel>
-                <TextBlock Text="Side by side" />
-                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                           Text="Right-click a tab to tile it beside its group, or drag a group to the edge of another. Groups fill the screen without overlapping, and you can resize them by dragging the gap between them." />
-            </StackPanel>
-        </Border>
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <StackPanel>
-                <TextBlock Text="Every display and desktop" />
-                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                           Text="Each monitor and virtual desktop has its own groups. Your layout is kept when you lock, sleep or reconnect a display." />
-            </StackPanel>
-        </Border>
-        <Border Style="{StaticResource SettingsItemStyle}">
-            <StackPanel>
-                <TextBlock Text="Stays out of the way" />
-                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                           Text="Windows keep their own title bars and behave normally. Windows that another app embeds, and any app or window class you list under Rules, are left alone." />
-            </StackPanel>
+        <Border Style="{StaticResource SettingsItemStyle}" Margin="0,12,0,0" Padding="20">
+            <StackPanel x:Name="Manual" />
         </Border>
 
-        <TextBlock Text="Open source" Style="{StaticResource SettingsSectionStyle}" />
+        <TextBlock Text="Project and license" Style="{StaticResource SettingsSectionStyle}" />
         <Border Style="{StaticResource SettingsItemStyle}">
             <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
-                <Run Text="WinTabs is free and open source. It builds on WinMan and WinMan.Windows by Vesko Karaganev (MIT)." />
+                <Run Text="WinTabs is distributed under the PolyForm Perimeter License. It builds on WinMan and WinMan.Windows by Vesko Karaganev (MIT)." />
                 <LineBreak />
                 <Hyperlink NavigateUri="https://github.com/jhnmks/WinTabs" RequestNavigate="OnRequestNavigate">github.com/jhnmks/WinTabs</Hyperlink>
             </TextBlock>

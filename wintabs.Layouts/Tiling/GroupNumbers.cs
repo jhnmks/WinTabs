@@ -1,14 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace wintabs.Layouts.Tiling
 {
-    /// <summary>
-    /// Hands out the numbers shown on tab group badges. Only groups that contain tabs and are part of a
-    /// layout are numbered, and the numbers always run 1, 2, 3, ... without gaps: groups keep their
-    /// order of creation, and when one closes, the ones after it move up. The registry is process-wide
-    /// so numbers are unique across every display.
-    /// </summary>
+    /// <summary>Numbers nonempty tab rows by screen, then nested groups, standalone groups, and Ungrouped.</summary>
     public static class GroupNumbers
     {
         private static readonly object s_lock = new();
@@ -29,20 +25,19 @@ namespace wintabs.Layouts.Tiling
             lock (s_lock)
             {
                 renumbered = PruneStale();
-                if (!IsNumbered(group))
+                if (IsNumbered(group) && !s_order.Contains(group))
+                    s_order.Add(group);
+                var ordered = s_order.OrderBy(x => ScreenBounds(x).Left)
+                    .ThenBy(x => ScreenBounds(x).Top)
+                    .ThenBy(x => x.IsContainer ? 0 : x.HasContainers ? 2 : 1)
+                    .ToArray();
+                if (!s_order.SequenceEqual(ordered))
                 {
-                    number = 0;
+                    s_order.Clear();
+                    s_order.AddRange(ordered);
+                    renumbered = true;
                 }
-                else
-                {
-                    int index = s_order.IndexOf(group);
-                    if (index < 0)
-                    {
-                        s_order.Add(group);
-                        index = s_order.Count - 1;
-                    }
-                    number = index + 1;
-                }
+                number = s_order.IndexOf(group) + 1;
             }
 
             // Raised outside the lock so handlers may read numbers freely.
@@ -60,7 +55,18 @@ namespace wintabs.Layouts.Tiling
             }
         }
 
-        private static bool IsNumbered(StackPanelNode group) => group.Children.Count > 0 && group.Desktop != null;
+        internal static void Register(StackPanelNode group)
+        {
+            lock (s_lock)
+                if (IsNumbered(group) && !s_order.Contains(group))
+                    s_order.Add(group);
+        }
+
+        private static WinMan.Rectangle ScreenBounds(StackPanelNode group) =>
+            group.Desktop is { } tree ? tree.DisplayBounds ?? tree.WorkArea : default;
+
+        private static bool IsNumbered(StackPanelNode group) => group.Desktop != null &&
+            (group.IsContainer ? group.Children.Count != 0 : group.UngroupedSelectedTab != null);
 
         // Drops groups that emptied or left their layout (closed, merged, display removed). Returns true if
         // any group that stays numbered moved to a lower number as a result.

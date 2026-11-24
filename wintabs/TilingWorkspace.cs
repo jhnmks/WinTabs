@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -28,6 +28,8 @@ namespace wintabs
         TargetCannotFit,
         PullsBeyondTopLevelPanel,
         NestingInStackPanel,
+        NoActiveNamedGroup,
+        NoGroupInDirection,
     }
 
     internal class TilingFailedException : InvalidOperationException
@@ -126,12 +128,13 @@ namespace wintabs
             return tabsOnly ? new StackPanelNode() : new SplitPanelNode { Orientation = orientation };
         }
 
-        public void RegisterDesktop(IVirtualDesktop virtualDesktop, Rectangle workArea, PanelOrientation orientation)
+        public void RegisterDesktop(IVirtualDesktop virtualDesktop, Rectangle workArea, PanelOrientation orientation, Rectangle? displayBounds = null)
         {
             var tree = new DesktopTree
             {
                 Root = CreateRoot(orientation),
                 WorkArea = workArea,
+                DisplayBounds = displayBounds,
             };
             m_states.AddState(virtualDesktop, new DesktopState
             {
@@ -148,6 +151,7 @@ namespace wintabs
             m_states.RemoveState(virtualDesktop);
             foreach (var window in tree!.Root!.Windows)
                 m_originalPositions.Remove(window.WindowReference);
+            tree.Root = null;
         }
 
         public WindowNode RegisterWindow(IWindow window, int maxTreeWidth = 100)
@@ -157,7 +161,8 @@ namespace wintabs
             if (tabsOnly)
             {
                 var root = state.DesktopTree.Root!;
-                var group = focusedNode?.Parent as StackPanelNode ?? root.Nodes.OfType<StackPanelNode>().FirstOrDefault();
+                // A new window opens as a tab next to the focused one, in the same row (also inside a container).
+                var group = focusedNode?.Parent as StackPanelNode ?? root.Nodes.OfType<StackPanelNode>().FirstOrDefault(x => !x.IsContainer);
                 if (group == null)
                 {
                     group = new StackPanelNode();
@@ -284,8 +289,8 @@ namespace wintabs
             var windowNode = state.DesktopTree.FindNode(window)!;
             if (tabsOnly)
             {
-                var group = windowNode.Parent!;
-                group.Detach(windowNode);
+                var group = GetGroup(windowNode)!;
+                DetachTab(windowNode);
                 if (group.Children.Count == 0)
                     RemoveEmptyGroup(group);
             }
@@ -296,18 +301,22 @@ namespace wintabs
             m_originalPositions.Remove(window);
         }
 
+        /// <summary>The group (top-level tab bar) a tab belongs to, also when the tab is inside a container.</summary>
+        public static StackPanelNode? GetGroup(TilingNode tab) =>
+            tab.Parent is StackPanelNode { IsContainer: true } container ? (StackPanelNode)container.Parent! : tab.Parent as StackPanelNode;
+
         /// <summary>
         /// Splits <paramref name="tab"/> off into a new group beside its own. A tab that is alone in its
         /// group has nothing to split from, so this refuses and leaves the layout untouched.
         /// </summary>
         public bool SplitTab(WindowNode tab, TilingDirection direction) =>
-            tab.Parent is StackPanelNode group && group.Children.Count > 1 && SplitTabBeside(tab, group, direction);
+            GetGroup(tab) is StackPanelNode group && group.Windows.Count() > 1 && SplitTabBeside(tab, group, direction);
 
         private bool CanSplitTabBeside(WindowNode tab, StackPanelNode target, TilingDirection direction)
         {
-            if (tab.Parent is not StackPanelNode source || tab.Desktop == null || tab.Desktop != target.Desktop)
+            if (GetGroup(tab) is not StackPanelNode source || tab.Desktop == null || tab.Desktop != target.Desktop)
                 return false;
-            if (source.Children.Count < 2)
+            if (source.Windows.Count() < 2)
                 return source != target && CanMoveTabGroup(source, target, direction);
             return CanAcceptTab(tab, target, direction);
         }
@@ -317,40 +326,151 @@ namespace wintabs
             if (!CanSplitTabBeside(tab, target, direction))
                 return false;
 
-            var source = (StackPanelNode)tab.Parent!;
-            if (source.Children.Count < 2)
+            var source = GetGroup(tab)!;
+            if (source.Windows.Count() < 2)
                 return MoveTabGroup(source, target, direction);
 
             var newGroup = new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing };
-            source.Detach(tab);
+            DetachTab(tab);
             InsertGroup(target, newGroup, direction);
             newGroup.Attach(tab);
             SetFocus(tab);
             return true;
         }
 
-        public (StackPanelNode Group, TilingDirection? Edge)? GetTabDropTarget(WindowNode tab, Point point)
+        /// <summary>
+        /// Takes a tab out of its row. A container left empty disappears with it. The group itself is left even
+        /// when empty; the caller decides what happens to it.
+        /// </summary>
+        private static void DetachTab(WindowNode tab)
         {
-            if (tab.Parent is not StackPanelNode source || tab.Desktop?.Root is not PanelNode root)
+            var row = (StackPanelNode)tab.Parent!;
+            row.Detach(tab);
+            if (row.IsContainer && row.Children.Count == 0)
+                row.Parent!.Detach(row);
+        }
+
+        /// <summary>
+        /// Puts a tab in a new container before the regular window tabs. Containers
+        /// stay until their last tab leaves. Tabs inside a container cannot be nested further.
+        /// </summary>
+        public StackPanelNode? WrapInContainer(WindowNode tab)
+        {
+            if (tab.Parent is not StackPanelNode { IsContainer: false } group)
+                return null;
+            var container = new StackPanelNode { Padding = group.Padding, Spacing = group.Spacing };
+            bool selected = group.SelectedChild == tab;
+            group.Detach(tab);
+            AttachContainer(group, container);
+            container.Attach(tab);
+            if (selected)
+                group.SelectTab(container);
+            return container;
+        }
+
+        private static void AttachContainer(StackPanelNode group, StackPanelNode container) =>
+            group.Attach(group.Children.TakeWhile(x => x is StackPanelNode).Count(), container);
+
+        /// <summary>Puts a tab into an existing container, at the end of its row.</summary>
+        public bool MoveTabToContainer(WindowNode tab, StackPanelNode container)
+        {
+            if (!container.IsContainer || tab.Parent == container || tab.Desktop == null || tab.Desktop != container.Desktop)
+                return false;
+            if (!CanAcceptTab(tab, container, null))
+                return false;
+            var oldGroup = GetGroup(tab)!;
+            DetachTab(tab);
+            container.Attach(tab);
+            if (oldGroup.Children.Count == 0)
+                RemoveEmptyGroup(oldGroup);
+            SetFocus(tab);
+            return true;
+        }
+
+        /// <summary>Unpacks the tabs in order before the other regular window tabs.</summary>
+        public bool Unpack(StackPanelNode container)
+        {
+            if (!container.IsContainer)
+                return false;
+            var group = (StackPanelNode)container.Parent!;
+            var selected = group.SelectedChild == container ? container.SelectedTab : null;
+            int index = group.Children.TakeWhile(x => x is StackPanelNode).Count();
+            foreach (var tab in container.Children.ToArray())
+            {
+                container.Detach(tab);
+                group.Attach(index++, tab);
+            }
+            group.Detach(container);
+            if (selected != null)
+                group.SelectTab(selected);
+            return true;
+        }
+
+        public (StackPanelNode Group, TilingDirection? Edge)? GetTabDropTarget(WindowNode tab, Point point, bool dropOnUngrouped = false)
+        {
+            if (GetGroup(tab) is not StackPanelNode source || tab.Desktop?.Root is not PanelNode root)
                 return null;
 
             var target = FindGroupAt(root, point);
             if (target == null)
                 return null;
 
-            var edge = GetDropEdge(target, point);
+            if (dropOnUngrouped)
+                return tab.Parent != target ? (target, null) : null;
+
+            var edge = GetTabDropEdge(target, point);
             if (edge is TilingDirection direction)
                 return CanSplitTabBeside(tab, target, direction) ? (target, edge) : null;
-            // Its own group already holds it; any other group takes it as a tab.
-            return target == source ? null : (target, null);
+
+            if (target.SelectedChild is StackPanelNode { IsContainer: true } container)
+                return container != tab.Parent && CanAcceptTab(tab, container, null) ? (container, null) : null;
+
+            // Its own group already holds it; only a drop on the group's tab bar takes it out of a container.
+            if (target == source)
+                return tab.Parent != source && (IsOnTabBar(source, point) || GetUngroupedBarBounds(source).Contains(point)) ? (target, null) : null;
+            return (target, null);
+        }
+
+        // Header rows are join targets; the window area has three horizontal drop zones.
+        public static TilingDirection? GetTabDropEdge(StackPanelNode target, Point point)
+        {
+            var bounds = GetGroupBounds(target);
+            int windowTop = target.SelectedChild is StackPanelNode { IsContainer: true } container
+                ? GetContainerBarBounds(container).Bottom
+                : Math.Max(GetTabBarBounds(target).Bottom, GetUngroupedBarBounds(target).Bottom);
+            if (point.Y < windowTop || bounds.Width <= 0)
+                return null;
+
+            double fraction = (double)(point.X - bounds.Left) / bounds.Width;
+            return fraction < 0.20 ? TilingDirection.Left : fraction >= 0.80 ? TilingDirection.Right : null;
         }
 
         /// <summary>The group whose area (tab bar included) contains the point.</summary>
         public static StackPanelNode? FindGroupAt(PanelNode root, Point point) =>
-            root.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => group.Children.Count != 0 && GetGroupBounds(group).Contains(point));
+            root.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => !group.IsContainer && group.Children.Count != 0 && GetGroupBounds(group).Contains(point));
+
+        /// <summary>The container whose (inner) tab bar contains the point, if any.</summary>
+        public static StackPanelNode? FindContainerBarAt(PanelNode root, Point point) =>
+            root.Nodes.OfType<StackPanelNode>().FirstOrDefault(container => container.IsContainer &&
+                ((StackPanelNode)container.Parent!).SelectedChild == container && GetContainerBarBounds(container).Contains(point));
+
+        public static Rectangle GetUngroupedBarBounds(StackPanelNode group)
+        {
+            if (!group.HasContainers || group.SelectedChild is not WindowNode)
+                return default;
+            var outer = GetTabBarBounds(group);
+            return new Rectangle(outer.Left, outer.Bottom, outer.Right, outer.Bottom + group.Padding.Top);
+        }
+
+        /// <summary>The strip of a container's own tab bar, just above its windows.</summary>
+        public static Rectangle GetContainerBarBounds(StackPanelNode container)
+        {
+            var rect = container.ComputedRectangle;
+            return new Rectangle(rect.Left, rect.Top - container.Padding.Top, rect.Right, rect.Top);
+        }
 
         /// <summary>
-        /// The one rule for every drag (tabs and groups, on any display): within the outer quarter of a group's
+        /// For dragging an entire tile: within the outer quarter of a group's
         /// window area the drop tiles beside it on that side. On its tab bar or in its middle the drop goes into the
         /// group (or swaps with it, for a group), shown as <c>null</c>.
         /// </summary>
@@ -376,9 +496,17 @@ namespace wintabs
         }
 
         /// <summary>Whether the tab can become a new group beside <paramref name="target"/> (or join it, without an edge).</summary>
-        public static bool CanAcceptTab(WindowNode tab, StackPanelNode target, TilingDirection? edge) =>
-            edge is not TilingDirection direction ||
-            CanSplitGroup(target, direction, new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing }, tab);
+        public static bool CanAcceptTab(WindowNode tab, StackPanelNode target, TilingDirection? edge)
+        {
+            if (!target.IsContainer)
+                return edge is not TilingDirection direction ||
+                    CanSplitGroup(target, direction, new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing }, tab);
+            if (edge != null)
+                return false;
+            tab.Measure();
+            var size = target.GetMaxSizeForInsert(tab);
+            return tab.MinSize.X <= size.X && tab.MinSize.Y <= size.Y;
+        }
 
         /// <summary>The strip of the group's tab bar; dropping a group there merges it into this one.</summary>
         public static Rectangle GetTabBarBounds(StackPanelNode group)
@@ -393,7 +521,7 @@ namespace wintabs
         /// <summary>Whether every tab of <paramref name="group"/> fits in <paramref name="target"/>.</summary>
         public static bool CanMergeInto(StackPanelNode group, StackPanelNode target)
         {
-            if (group == target || group.Children.Count == 0 || target.Children.Count == 0)
+            if (group.IsContainer || target.IsContainer || group == target || group.Children.Count == 0 || target.Children.Count == 0)
                 return false;
             group.Measure();
             return FitsGroup(group, GetGroupBounds(target));
@@ -409,10 +537,13 @@ namespace wintabs
                 return false;
 
             var selected = source.SelectedTab;
-            foreach (var tab in source.Children.OfType<WindowNode>().ToArray())
+            foreach (var tab in source.Children.ToArray())
             {
                 source.Detach(tab);
-                target.Attach(tab);
+                if (tab is StackPanelNode container)
+                    AttachContainer(target, container);
+                else
+                    target.Attach(tab);
             }
             RemoveEmptyGroup(source);
             if (selected != null)
@@ -433,12 +564,18 @@ namespace wintabs
                 return false;
 
             var selected = group.SelectedTab;
-            foreach (var tab in group.Children.OfType<WindowNode>().ToArray())
+            foreach (var tab in group.Children.ToArray())
             {
                 group.Detach(tab);
-                target.Attach(tab);
-                if (m_originalPositions.Remove(tab.WindowReference, out var original))
-                    destination.m_originalPositions[tab.WindowReference] = original;
+                if (tab is StackPanelNode container)
+                    AttachContainer(target, container);
+                else
+                    target.Attach(tab);
+                foreach (var window in tab.Windows)
+                {
+                    if (m_originalPositions.Remove(window.WindowReference, out var original))
+                        destination.m_originalPositions[window.WindowReference] = original;
+                }
             }
             if (group.Parent != null)
                 RemoveEmptyGroup(group);
@@ -462,15 +599,16 @@ namespace wintabs
             return FitsGroup(group, GetGroupBounds(target)) && FitsGroup(target, GetGroupBounds(group));
         }
 
-        public bool DropTab(WindowNode tab, Point point) => GetTabDropTarget(tab, point) is { } target &&
-            (target.Edge is TilingDirection edge ? SplitTabBeside(tab, target.Group, edge) : MoveTabToGroup(tab, target.Group));
+        public bool DropTab(WindowNode tab, Point point, bool dropOnUngrouped = false) => GetTabDropTarget(tab, point, dropOnUngrouped) is { } target &&
+            (target.Edge is TilingDirection edge ? SplitTabBeside(tab, target.Group, edge)
+                : target.Group.IsContainer ? MoveTabToContainer(tab, target.Group) : MoveTabToGroup(tab, target.Group));
 
         public bool MoveTabToGroup(WindowNode tab, StackPanelNode target)
         {
-            if (tab.Parent is not StackPanelNode source || source == target || tab.Desktop == null || tab.Desktop != target.Desktop)
+            if (GetGroup(tab) is not StackPanelNode source || tab.Parent == target || tab.Desktop == null || tab.Desktop != target.Desktop)
                 return false;
 
-            source.Detach(tab);
+            DetachTab(tab);
             target.Attach(tab);
             if (source.Children.Count == 0)
                 RemoveEmptyGroup(source);
@@ -483,10 +621,10 @@ namespace wintabs
         /// </summary>
         public bool MoveFocusedTabToGroup(IVirtualDesktop currentDesktop, int groupNumber)
         {
-            if (GetFocus(currentDesktop) is not WindowNode { Parent: StackPanelNode source } tab || source.Desktop?.Root is not PanelNode root)
+            if (GetFocus(currentDesktop) is not WindowNode { Parent: StackPanelNode source } tab)
                 return false;
 
-            var target = root.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => group.GroupNumber == groupNumber);
+            var target = FindGroup(currentDesktop, groupNumber);
             if (target == null)
                 return false;
 
@@ -499,11 +637,11 @@ namespace wintabs
                 return true;
             }
 
-            return MoveTabToGroup(tab, target);
+            return target.IsContainer ? MoveTabToContainer(tab, target) : MoveTabToGroup(tab, target);
         }
 
         public StackPanelNode? FindGroup(IVirtualDesktop desktop, int groupNumber) =>
-            GetTree(desktop)?.Root?.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => group.GroupNumber == groupNumber);
+            groupNumber > 0 ? GetTree(desktop)?.Root?.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => group.GroupNumber == groupNumber) : null;
 
         /// <summary>
         /// Moves the focused tab to the end of a group owned by another workspace (another display).
@@ -518,7 +656,7 @@ namespace wintabs
         public WindowNode? TransferTab(WindowNode tab, TilingWorkspace destination, StackPanelNode? target, TilingDirection? edge, IVirtualDesktop desktop)
         {
             var tree = destination.GetTree(desktop);
-            if (tab.Parent is not StackPanelNode source || tab.Desktop != GetTree(desktop) || tree?.Root is not PanelNode root || tree == tab.Desktop)
+            if (tab.Parent is not StackPanelNode || tab.Desktop == null || tab.Desktop != GetTree(desktop) || tree?.Root is not PanelNode root || tree == tab.Desktop)
                 return null;
             if (target == null ? root is not StackPanelNode { Children.Count: 0 } : target.Desktop != tree || !CanAcceptTab(tab, target, edge))
                 return null;
@@ -527,33 +665,18 @@ namespace wintabs
             if (destination.HasWindow(window))
                 return null;
 
-            var original = m_originalPositions.GetValueOrDefault(window, window.Position);
-            int index = source.IndexOf(tab);
+            var original = m_originalPositions[window];
+            var group = target ?? (StackPanelNode)root;
+            if (target != null && edge is TilingDirection direction)
+            {
+                group = new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing };
+                InsertGroup(target, group, direction);
+            }
             UnregisterWindow(window);
-            try
-            {
-                var group = target ?? (StackPanelNode)root;
-                if (target != null && edge is TilingDirection direction)
-                {
-                    group = new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing };
-                    InsertGroup(target, group, direction);
-                }
-                var moved = destination.RegisterWindow(window, group);
-                destination.m_originalPositions[window] = original;
-                destination.SetFocus(moved);
-                return moved;
-            }
-            catch (Exception)
-            {
-                // Never lose the tab: put it back where it was.
-                if (source.Desktop != null)
-                {
-                    var restored = new WindowNode(window);
-                    source.Attach(Math.Min(index, source.Children.Count), restored);
-                    m_originalPositions[window] = original;
-                }
-                throw;
-            }
+            group.Attach(tab);
+            destination.m_originalPositions[window] = original;
+            destination.SetFocus(tab);
+            return tab;
         }
 
         public bool TransferTabGroup(StackPanelNode group, TilingWorkspace destination, IVirtualDesktop desktop)
@@ -728,17 +851,31 @@ namespace wintabs
             if (tab != null)
             {
                 tab.Measure();
-                if (tab.Parent == target)
-                {
-                    var remaining = target.Children.Where(child => child != tab).ToArray();
-                    existing = new Point(remaining.Max(child => child.MinSize.X) + target.Spacing + target.Padding.Left + target.Padding.Right,
-                        remaining.Max(child => child.MinSize.Y) + target.Spacing + target.Padding.Top + target.Padding.Bottom);
-                }
+                if (GetGroup(tab) == target)
+                    existing = MeasureWithoutTab(target, tab);
                 added = new Point(tab.MinSize.X + incoming.Spacing + added.X, tab.MinSize.Y + incoming.Spacing + added.Y);
             }
             return GetOrientation(direction) == PanelOrientation.Horizontal
                 ? existing.X + added.X <= bounds.Width && Math.Max(existing.Y, added.Y) <= bounds.Height
                 : existing.Y + added.Y <= bounds.Height && Math.Max(existing.X, added.X) <= bounds.Width;
+        }
+
+        private static Point MeasureWithoutTab(StackPanelNode row, WindowNode excluded)
+        {
+            int width = 0, height = 0;
+            bool hasContainers = row.Children.OfType<StackPanelNode>()
+                .Any(container => container.Children.Any(child => child != excluded));
+            foreach (var child in row.Children)
+            {
+                if (child == excluded || child is StackPanelNode empty && !empty.Children.Any(x => x != excluded))
+                    continue;
+                var size = child is StackPanelNode container ? MeasureWithoutTab(container, excluded) : child.MinSize;
+                if (child is WindowNode)
+                    size = new Point(size.X + row.Spacing, size.Y + row.Spacing + (hasContainers ? row.Padding.Top : 0));
+                width = Math.Max(width, size.X);
+                height = Math.Max(height, size.Y);
+            }
+            return new Point(width + row.Padding.Left + row.Padding.Right, height + row.Padding.Top + row.Padding.Bottom);
         }
 
         private static bool FitsGroup(StackPanelNode group, Rectangle bounds) =>
@@ -1188,13 +1325,44 @@ namespace wintabs
 
             int from = group.IndexOf(focused);
             int to = from + offset;
-            if (to < 0 || to >= group.Children.Count)
+            if (to < 0 || to >= group.Children.Count || group.Children[to] is not WindowNode)
                 return false;
 
             group.Move(from, to);
             return true;
         }
 
+
+        public WindowNode? GetCycledGroupTab(IVirtualDesktop desktop, int offset)
+        {
+            if (GetFocus(desktop) is not WindowNode focused || GetGroup(focused) is not { HasContainers: true } group)
+                return null;
+
+            var containers = group.Children.OfType<StackPanelNode>().ToList();
+            var ungrouped = group.UngroupedSelectedTab;
+            int count = containers.Count + (ungrouped != null ? 1 : 0);
+            if (count < 2)
+                return null;
+
+            int from = focused.Parent is StackPanelNode { IsContainer: true } current ? containers.IndexOf(current) : containers.Count;
+            int to = ((from + offset) % count + count) % count;
+            return to == containers.Count ? ungrouped : containers[to].SelectedTab;
+        }
+
+        public bool MoveFocusedGroup(IVirtualDesktop desktop, int offset)
+        {
+            if (GetFocus(desktop) is not WindowNode { Parent: StackPanelNode { IsContainer: true } container } ||
+                container.Parent is not StackPanelNode group)
+                return false;
+
+            int from = group.IndexOf(container);
+            int to = from + offset;
+            if (to < 0 || to >= group.Children.Count || group.Children[to] is not StackPanelNode)
+                return false;
+
+            group.Move(from, to);
+            return true;
+        }
 
         public void SetFocus(TilingNode node)
         {
@@ -1203,8 +1371,9 @@ namespace wintabs
                 throw new ArgumentException("Desktop not registered with backend!");
 
             state.FocusedNode = node;
-            if (node is WindowNode tab && tab.Parent is StackPanelNode group)
-                group.SelectTab(tab);
+            // Select it in its row, and its container in the group's row.
+            for (TilingNode child = node; child.Parent is StackPanelNode row; child = row)
+                row.SelectTab(child);
         }
 
         public void SetFocus(IWindow window)

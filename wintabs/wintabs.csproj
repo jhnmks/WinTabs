@@ -98,6 +98,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\USER-MANUAL.md" LogicalName="WinTabs.UserManual.md" />
     <EmbeddedResource Update="Resources\Files.resx">
       <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>Files.Designer.cs</LastGenOutput>

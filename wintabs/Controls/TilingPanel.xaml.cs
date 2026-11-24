@@ -1,8 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Media;
 
 using wintabs.ViewModels;
 
@@ -35,17 +33,11 @@ namespace wintabs.Controls
             if (ViewModel?.BeginGroupDrag is not { } begin)
                 return;
 
-            for (var element = e.OriginalSource as DependencyObject; element != null && element != this;
-                element = element is Visual ? VisualTreeHelper.GetParent(element) : LogicalTreeHelper.GetParent(element))
-            {
-                if (element is TilingNodeTab or ScrollBar)
-                    return;
-            }
-
             var point = PointToScreen(e.GetPosition(this));
-            begin(new WinMan.Point((int)point.X, (int)point.Y));
+            begin(new WinMan.Point((int)point.X, (int)point.Y), () => { });
             e.Handled = true;
         }
+
 
         protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
         {

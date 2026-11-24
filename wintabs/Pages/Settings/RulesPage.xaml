@@ -45,19 +45,15 @@
             </StackPanel>
         </Border>
 
-        <Expander Margin="0,16,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-            <Expander.Header>
-                <StackPanel>
-                    <TextBlock Text="Advanced: window class rules" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
-                               Text="For one kind of window inside an app, such as a dialog, instead of the whole app." />
-                </StackPanel>
-            </Expander.Header>
+        <TextBlock Text="Advanced: window class rules" Style="{StaticResource SettingsSectionStyle}" />
+        <Border Style="{StaticResource SettingsItemStyle}">
             <StackPanel>
-                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Margin="0,0,0,12"
+                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap"
+                           Text="For one kind of window inside an app, such as a dialog, instead of the whole app." />
+                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" Margin="0,8,0,12"
                            Text="Every window has a hidden technical name, its window class, chosen by the app's developer (for example &quot;#32770&quot; for standard dialogs). Windows whose class matches an entry here float. Not case-sensitive; regular expressions are allowed." />
                 <wtc:StringsListBox ItemsSource="{Binding ClassIgnoreList, Mode=TwoWay}" />
             </StackPanel>
-        </Expander>
+        </Border>
     </wtc:SpacedStackPanel>
 </UserControl>

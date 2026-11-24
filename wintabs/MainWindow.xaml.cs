@@ -336,6 +336,8 @@ namespace wintabs
             string friendlyActionName = command.Shortcut switch
             {
                 TabShortcut.CycleTab => "switch tabs",
+                TabShortcut.CycleGroup => "switch groups",
+                TabShortcut.MoveGroup => "move the group",
                 TabShortcut.MoveTabToGroup => $"move the tab to group {command.GroupNumber}",
                 TabShortcut.TileTab => "tile the tab",
                 TabShortcut.CheatSheet => "show the shortcuts",
@@ -353,12 +355,18 @@ namespace wintabs
                     case TabShortcut.MoveTab:
                         m_tiling.MoveTab(offset);
                         break;
+                    case TabShortcut.CycleGroup:
+                        m_tiling.CycleGroup(offset);
+                        break;
+                    case TabShortcut.MoveGroup:
+                        m_tiling.MoveGroup(offset);
+                        break;
                     case TabShortcut.MoveTabToGroup:
                         if (!m_tiling.MoveTabToGroup(command.GroupNumber))
                         {
                             m_logger.Information("Ctrl+Shift+{Group}: no tab group {Group} to move the tab into", command.GroupNumber);
                             PlayBeepSound();
-                            await ShowToastAsync($"No tab group {command.GroupNumber}", "Use the number shown in a group's red badge.", ToastDurationLong);
+                            await ShowToastAsync($"No tab group {command.GroupNumber}", "Use the number shown on the group's tab or badge.", ToastDurationLong);
                         }
                         break;
                     case TabShortcut.TileTab:
@@ -403,6 +411,8 @@ namespace wintabs
                 TilingError.MissingTarget => "No focused window!",
                 TilingError.TargetCannotFit => "Cannot fit in the target panel!",
                 TilingError.InvalidTarget => "The target panel does not support this operation!",
+                TilingError.NoActiveNamedGroup => "Select a named group in the top row first.",
+                TilingError.NoGroupInDirection => "There is no named group in that direction. Ungrouped stays last.",
                 TilingError.NestingInStackPanel => "Stack panel cannot contain other panels!",
                 _ => null,
             };

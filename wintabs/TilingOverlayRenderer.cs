@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -54,6 +54,11 @@ namespace wintabs
             }
         }
 
+        internal event Action<WindowNode>? WrapInContainerRequested;
+        internal event Action<WindowNode, StackPanelNode>? MoveToContainerRequested;
+        internal event Action<StackPanelNode>? RenameContainerRequested;
+        internal event Action<StackPanelNode, string?>? GroupColorRequested;
+        internal event Action<StackPanelNode>? UnpackContainerRequested;
         internal event Action? DragCanceled;
         internal event Action<WindowNode, TilingDirection>? TabSplitRequested;
         internal event Action<StackPanelNode, WinMan.Point, bool>? GroupMoved;
@@ -114,9 +119,11 @@ namespace wintabs
             UpdateViewModels(snapshot, focusedPath);
             foreach (var (node, viewModel) in m_nodeViewModels)
             {
-                viewModel.IsActiveTab = ReferenceEquals(node, activeTab);
+                // A container's tab is highlighted while the focused window is inside it.
+                viewModel.IsActiveTab = ReferenceEquals(node, activeTab) ||
+                    node is StackPanelNode { IsContainer: true } && ReferenceEquals(node, activeTab?.Parent);
                 if (viewModel is TilingPanelViewModel panel)
-                    panel.HasFocus = ReferenceEquals(node, activeTab?.Parent);
+                    panel.HasFocus = ReferenceEquals(node, activeTab?.Parent) || activeTab != null && ReferenceEquals(node, TilingWorkspace.GetGroup(activeTab));
             }
 
             UpdateDividers(snapshot.OfType<SplitPanelNode>());
@@ -174,6 +181,9 @@ namespace wintabs
                 .CreateBrush(AppTheme.IsDark);
             m_viewModel.FontSize = m_display.Scaling * m_panelFontSize;
             m_viewModel.IconSize = m_display.Scaling * m_panelFontSize;
+            foreach (var (node, vm) in m_nodeViewModels)
+                if (node is StackPanelNode { IsContainer: true } group)
+                    UpdateGroupColor(vm, group);
         }
 
         private Rectangle AdjustForDisplay(Rectangle rectangle)
@@ -256,9 +266,17 @@ namespace wintabs
                 case StackPanelNode panelNode:
                     var panelViewModel = new TilingPanelViewModel
                     {
-                        BeginGroupDrag = start => m_overlay.BeginDrag(start,
-                            (point, commit) => GroupMoved?.Invoke(panelNode, point, commit),
-                            () => { }, () =>
+                        SelectUngroupedCommand = new ViewModels.DelegateCommand(_ =>
+                        {
+                            if (panelNode.UngroupedSelectedTab is { } tab)
+                                TilingNodeFocusRequested?.Invoke(this, tab);
+                        }),
+                        GroupColorCommand = new ViewModels.DelegateCommand(color => GroupColorRequested?.Invoke(panelNode, color as string)),
+                        RenameCommand = new ViewModels.DelegateCommand(_ => RenameContainerRequested?.Invoke(panelNode)),
+                        UnpackCommand = new ViewModels.DelegateCommand(_ => UnpackContainerRequested?.Invoke(panelNode)),
+                        BeginGroupDrag = (start, click) => m_overlay.BeginDrag(start,
+                            (point, commit) => GroupMoved?.Invoke(panelNode.Parent is StackPanelNode outer ? outer : panelNode, point, commit),
+                            click, () =>
                             {
                                 PreviewRectangle = null;
                                 DragCanceled?.Invoke();
@@ -274,7 +292,9 @@ namespace wintabs
                         {
                             if (direction is string value && Enum.TryParse<TilingDirection>(value, out var edge))
                                 TabSplitRequested?.Invoke(windowNode, edge);
-                        }, _ => windowNode.Parent?.Children.Count > 1),
+                        }, _ => TilingWorkspace.GetGroup(windowNode)?.Windows.Skip(1).Any() == true),
+                        MoveToContainer = container => MoveToContainerRequested?.Invoke(windowNode, container),
+                        WrapInContainerCommand = new ViewModels.DelegateCommand(_ => WrapInContainerRequested?.Invoke(windowNode)),
                     };
                     windowViewModel.FloatActionPressed += WindowViewModel_FloatActionPressed;
                     windowViewModel.AlwaysFloatPressed += WindowViewModel_AlwaysFloatPressed;
@@ -284,6 +304,59 @@ namespace wintabs
                     return windowViewModel;
                 default:
                     return null;
+            }
+        }
+
+        internal (StackPanelNode Group, Rectangle Bounds)? FindGroupTabAt(WinMan.Point point)
+        {
+            if (m_overlay.Content is not TilingOverlay view || PresentationSource.FromVisual(view) == null)
+                return null;
+
+            var local = view.PointFromScreen(new System.Windows.Point(point.X, point.Y));
+            var tab = FindGroupTab(view, local);
+            if (tab?.DataContext is not TilingPanelViewModel { Node: StackPanelNode group })
+                return null;
+
+            var topLeft = tab.PointToScreen(new System.Windows.Point());
+            var bottomRight = tab.PointToScreen(new System.Windows.Point(tab.ActualWidth, tab.ActualHeight));
+            return (group, new Rectangle((int)topLeft.X, (int)topLeft.Y, (int)bottomRight.X, (int)bottomRight.Y));
+        }
+
+        internal bool IsOnUngroupedTab(WinMan.Point point) =>
+            m_overlay.Content is TilingOverlay view && PresentationSource.FromVisual(view) != null &&
+            FindVisibleDropElement(view, view.PointFromScreen(new System.Windows.Point(point.X, point.Y)), IsUngroupedTab) != null;
+
+        private static bool IsUngroupedTab(FrameworkElement element) =>
+            element is System.Windows.Controls.Button { Name: "UngroupedDropTab" };
+
+        internal static TilingNodeTab? FindGroupTab(FrameworkElement view, System.Windows.Point point) =>
+            FindVisibleDropElement(view, point, element =>
+                element is TilingNodeTab { DataContext: TilingPanelViewModel { IsContainer: true } }) as TilingNodeTab;
+
+        private static FrameworkElement? FindVisibleDropElement(FrameworkElement view, System.Windows.Point point,
+            Predicate<FrameworkElement> matches)
+        {
+            return FindVisibleTab(view);
+
+            FrameworkElement? FindVisibleTab(FrameworkElement element)
+            {
+                if (element.Visibility != Visibility.Visible)
+                    return null;
+                if (element is TilingNodeTab || IsUngroupedTab(element) || element.ClipToBounds || element is System.Windows.Controls.ScrollContentPresenter)
+                {
+                    var bounds = new Rect(element.RenderSize);
+                    if (element != view)
+                        bounds = element.TransformToAncestor(view).TransformBounds(bounds);
+                    if (!bounds.Contains(point))
+                        return null;
+                }
+                if (matches(element))
+                    return element;
+
+                for (int i = System.Windows.Media.VisualTreeHelper.GetChildrenCount(element) - 1; i >= 0; i--)
+                    if (System.Windows.Media.VisualTreeHelper.GetChild(element, i) is FrameworkElement child && FindVisibleTab(child) is { } hit)
+                        return hit;
+                return null;
             }
         }
 
@@ -319,7 +392,8 @@ namespace wintabs
             vm.Node = node;
             vm.Title = node.WindowReference.Title;
             vm.AppName = node.WindowReference.GetCachedAppName();
-            vm.HasFocus = node.Parent is StackPanelNode group ? group.SelectedTab == node : focusedPath.Contains(node);
+            vm.CanWrapInContainer = node.Parent is StackPanelNode { IsContainer: false };
+            vm.HasFocus = node.Parent is StackPanelNode group ? group.SelectedChild == node : focusedPath.Contains(node);
             vm.ComputedBounds = AdjustForDisplay(node.ComputedRectangle);
             vm.PrimaryActionCommand = m_panelItemPrimaryActionCommand;
             vm.CloseCommand = m_panelItemCloseActionCommand;
@@ -336,34 +410,61 @@ namespace wintabs
             vm.GroupNumber = node is StackPanelNode group ? group.GroupNumber : 0;
             vm.ComputedBounds = AdjustForDisplay(node.ComputedRectangle);
             vm.PrimaryActionCommand = m_panelItemPrimaryActionCommand;
-            vm.CloseCommand = m_panelItemCloseActionCommand;
 
-            var headerLeft = vm.ComputedBounds.Left - (node.Parent == null ? 0 : node.Padding.Left);
+            var container = node as StackPanelNode is { IsContainer: true } c ? c : null;
+            vm.IsContainer = container != null;
+            vm.CloseCommand = vm.IsContainer ? null : m_panelItemCloseActionCommand;
+            vm.Title = container?.ContainerTitle ?? "";
+            UpdateGroupColor(vm, container);
+
+            // A group's bar sits in the padding above its windows; a container's bar is the strip its own padding
+            // reserves inside the group, and only shows while the container is the group's selected tab.
+            var headerLeft = vm.ComputedBounds.Left - (node.Parent == null || container != null ? 0 : node.Padding.Left);
             var headerTop = vm.ComputedBounds.Top - (node.Parent == null ? 0 : node.Padding.Top);
+            vm.HasGroupRow = node is StackPanelNode { HasContainers: true };
+            vm.HasUngroupedTabs = vm.HasGroupRow && node.Children.OfType<WindowNode>().Any();
+            vm.ShowUngroupedRow = vm.HasGroupRow && ((StackPanelNode)node).SelectedChild is WindowNode;
+            vm.RowHeight = Math.Max(0, PanelPadding.Top - PanelSpacing);
+            vm.RowGap = PanelSpacing;
             vm.HeaderBounds = Rectangle.OffsetAndSize(
                 headerLeft + PanelSpacing / 2,
                 headerTop + PanelSpacing / 2,
                 (int)(vm.ComputedBounds.Width - PanelSpacing),
-                (int)(PanelPadding.Top - PanelSpacing));
+                (int)(vm.RowHeight + (vm.ShowUngroupedRow ? vm.RowHeight + vm.RowGap : 0)));
 
-            vm.IsHeaderVisible = !IsObscured(node, focusedPath);
+            vm.IsHeaderVisible = container != null
+                ? ((StackPanelNode)container.Parent!).SelectedChild == container
+                : !IsObscured(node, focusedPath);
 
             if (HaveChildrenChanged(vm, node))
             {
                 var desired = node.Children.Select(GetViewModel).OfType<TilingNodeViewModel>().ToList();
-                for (int i = vm.ChildNodes.Count - 1; i >= 0; i--)
-                {
-                    if (!desired.Contains(vm.ChildNodes[i]))
-                        vm.ChildNodes.RemoveAt(i);
-                }
-                for (int i = 0; i < desired.Count; i++)
-                {
-                    int currentIndex = vm.ChildNodes.IndexOf(desired[i]);
-                    if (currentIndex < 0)
-                        vm.ChildNodes.Insert(i, desired[i]);
-                    else if (currentIndex != i)
-                        vm.ChildNodes.Move(currentIndex, i);
-                }
+                SyncTabs(vm.OuterTabs, desired.Where(x => x is TilingPanelViewModel));
+                SyncTabs(vm.WindowTabs, desired.Where(x => x is TilingWindowViewModel));
+                SyncTabs(vm.ChildNodes, desired);
+            }
+        }
+
+        private static void UpdateGroupColor(TilingNodeViewModel vm, StackPanelNode? group)
+        {
+            vm.GroupColorBrush = group?.ContainerColor is { } color
+                ? Models.FocusBorderPalette.Find(color).CreateBrush(AppTheme.IsDark) : null;
+        }
+
+        private static void SyncTabs(System.Collections.ObjectModel.ObservableCollection<TilingNodeViewModel> tabs,
+            IEnumerable<TilingNodeViewModel> desired)
+        {
+            var items = desired.ToList();
+            for (int i = tabs.Count - 1; i >= 0; i--)
+                if (!items.Contains(tabs[i]))
+                    tabs.RemoveAt(i);
+            for (int i = 0; i < items.Count; i++)
+            {
+                int oldIndex = tabs.IndexOf(items[i]);
+                if (oldIndex < 0)
+                    tabs.Insert(i, items[i]);
+                else if (oldIndex != i)
+                    tabs.Move(oldIndex, i);
             }
         }
 

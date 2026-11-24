@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Threading;
 
@@ -51,19 +51,6 @@ namespace wintabs
 
 
         private bool m_autoFloatNewWindows = false;
-
-        private void SetWindowPadding(int value)
-        {
-            m_windowPadding = value;
-            PropagatePaddingChange();
-        }
-
-        private void SetPanelHeight(int value)
-        {
-            m_panelHeight = value;
-            PropagatePanelHeightChange();
-        }
-
 
         public IWorkspace Workspace => m_workspace;
 
@@ -131,6 +118,11 @@ namespace wintabs
             m_gui.TilingNodeFocusRequested += OnTilingNodeFocusRequested;
             m_gui.TilingNodeCloseRequested += OnTilingNodeCloseRequested;
             m_gui.TabSplitRequested += OnTabSplitRequested;
+            m_gui.WrapInContainerRequested += OnWrapInContainerRequested;
+            m_gui.MoveToContainerRequested += OnMoveToContainerRequested;
+            m_gui.RenameContainerRequested += OnRenameContainerRequested;
+            m_gui.GroupColorRequested += OnGroupColorRequested;
+            m_gui.UnpackContainerRequested += OnUnpackContainerRequested;
             m_gui.GroupMoved += OnGroupMoved;
             m_gui.DragCanceled += () => ClearExternalDropPreview?.Invoke();
             m_gui.DividerResized += OnDividerResized;
@@ -176,8 +168,9 @@ namespace wintabs
             _ = m_dispatcher.RunAsync(() =>
             {
                 m_autoFloatNewWindows = x.AutoFloatNewWindows;
-                SetWindowPadding(x.WindowPadding);
-                SetPanelHeight(x.PanelHeight);
+                m_windowPadding = x.WindowPadding;
+                m_panelHeight = x.PanelHeight;
+                UpdateLayoutSpacing();
 
             });
         }
@@ -256,6 +249,39 @@ namespace wintabs
             }
 
             FocusHelper.ForceActivate(tab.WindowReference.Handle);
+            InvalidateLayout();
+        }
+
+        public void CycleGroup(int offset)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            WindowNode? tab;
+            using (m_backendLock.EnterScope())
+            {
+                SyncFocusToForeground();
+                tab = m_backend.GetCycledGroupTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset);
+                if (tab == null)
+                    return;
+                SetShortcutFocus(tab);
+            }
+            FocusHelper.ForceActivate(tab.WindowReference.Handle);
+            InvalidateLayout();
+        }
+
+        public void MoveGroup(int offset)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                SyncFocusToForeground();
+                var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+                if (m_backend.GetFocus(desktop) is not WindowNode { Parent: StackPanelNode { IsContainer: true } })
+                    throw new TilingFailedException(TilingError.NoActiveNamedGroup);
+                if (!m_backend.MoveFocusedGroup(desktop, offset))
+                    throw new TilingFailedException(TilingError.NoGroupInDirection);
+            }
             InvalidateLayout();
         }
 
@@ -431,7 +457,9 @@ namespace wintabs
             }
         }
 
-        public void Dispose()
+        public void Dispose() => Dispose(preserveWorkspace: false);
+
+        internal void Dispose(bool preserveWorkspace)
         {
             m_logger.Information("No longer managing display {Display}", m_display);
 
@@ -454,6 +482,15 @@ namespace wintabs
             GroupNumbers.Renumbered -= OnGroupsRenumbered;
             m_display.BoundsChanged -= OnDisplayWorkAreaChanged;
             m_workspace.CursorLocationChanged -= OnNativeDragCursorChanged;
+
+            if (!preserveWorkspace)
+            {
+                using (m_backendLock.EnterScope())
+                {
+                    foreach (var desktop in m_backend.Desktops.ToArray())
+                        m_backend.UnregisterDesktop(desktop);
+                }
+            }
 
             // There is still the possibility that OnWindowAdded gets called, but hopefully that does not happen too often.
             using (m_windowSetLock.EnterScope())

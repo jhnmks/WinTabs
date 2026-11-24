@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -74,23 +74,30 @@ namespace wintabs
                 if (tree?.Root == null)
                     return;
 
-                tree.WorkArea = m_display.WorkArea;
+                tree.WorkArea = GetLayoutWorkArea();
+                tree.DisplayBounds = m_display.Bounds;
                 if (tree.WorkArea.Width <= 0 || tree.WorkArea.Height <= GetPanelPaddingRect().Top)
                     return;
+                foreach (var container in tree.Root.Nodes.OfType<StackPanelNode>().Where(x => x.IsContainer))
+                {
+                    container.Padding = GetPanelPaddingRect();
+                    container.Spacing = GetPanelSpacing();
+                }
                 if (tree.Root is SplitPanelNode)
                     tree.Measure();
                 tree.Arrange();
 
                 snapshot = tree.Root!.Children.Count == 0 ? [] : tree.Root.Nodes.ToList();
-                var groups = snapshot.OfType<StackPanelNode>().Where(group => group.Children.Count > 1).ToArray();
+                // The tab shown is the one whose window is in front; in a container, the container is shown.
+                var groups = snapshot.OfType<StackPanelNode>().Where(group => !group.IsContainer && group.Windows.Skip(1).Any()).ToArray();
                 if (groups.Length != 0)
                 {
                     var zOrder = m_workspace.CreateSnapshotZOrderComparer();
                     foreach (var group in groups)
                     {
-                        var front = group.Children.OfType<WindowNode>().OrderBy(tab => tab.WindowReference, zOrder).FirstOrDefault();
-                        if (front != null)
-                            group.SelectTab(front);
+                        var front = group.Windows.OrderBy(tab => tab.WindowReference, zOrder).FirstOrDefault();
+                        for (TilingNode? child = front; child?.Parent is StackPanelNode row; child = row == group ? null : row)
+                            row.SelectTab(child);
                     }
                 }
                 focusedNode = m_backend.GetFocus(desktop);
@@ -259,7 +266,7 @@ namespace wintabs
 
         private void OnDisplayScalingChanged(object? sender, DisplayScalingChangedEventArgs e)
         {
-            PropagatePanelHeightChange();
+            UpdateLayoutSpacing();
         }
 
         private void OnPlacementFailed(object? sender, TilingFailedEventArgs e)
@@ -341,7 +348,7 @@ namespace wintabs
             var orientation = m_display.Bounds.Width >= m_display.Bounds.Height ? PanelOrientation.Horizontal : PanelOrientation.Vertical;
             using (m_backendLock.EnterScope())
             {
-                m_backend.RegisterDesktop(e.Source, m_display.WorkArea, orientation);
+                m_backend.RegisterDesktop(e.Source, GetLayoutWorkArea(), orientation, m_display.Bounds);
             }
         }
 
@@ -530,6 +537,73 @@ namespace wintabs
             InvalidateLayout();
         }
 
+        private void OnWrapInContainerRequested(WindowNode tab)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                if (!m_backend.HasWindow(tab.WindowReference) || m_backend.WrapInContainer(tab) == null)
+                    return;
+            }
+            OnTilingNodeFocusRequested(this, tab);
+        }
+
+        private void OnMoveToContainerRequested(WindowNode tab, StackPanelNode container)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                if (!m_backend.MoveTabToContainer(tab, container))
+                    return;
+            }
+            OnTilingNodeFocusRequested(this, tab);
+        }
+
+        private void OnRenameContainerRequested(StackPanelNode container) =>
+            m_dispatcher.BeginInvoke(() => RenameContainer(container));
+
+        private void RenameContainer(StackPanelNode container)
+        {
+            if (!Active || m_workspacePaused || !container.IsContainer)
+                return;
+            var dialog = new Windows.ContainerNameWindow(container.Name, container.GroupNumber);
+            if (dialog.ShowDialog() != true)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                if (container.IsContainer && container.Desktop != null)
+                    container.Name = dialog.ContainerName;
+            }
+            InvalidateLayout();
+        }
+
+        private void OnGroupColorRequested(StackPanelNode group, string? color)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                if (!group.IsContainer || group.Desktop == null)
+                    return;
+                group.ContainerColor = color;
+            }
+            InvalidateLayout();
+        }
+
+        private void OnUnpackContainerRequested(StackPanelNode container)
+        {
+            if (!Active || m_workspacePaused)
+                return;
+            using (m_backendLock.EnterScope())
+            {
+                if (!m_backend.Unpack(container))
+                    return;
+            }
+            InvalidateLayout();
+        }
+
         /// <summary>
         /// A tab is dragged (by its window's title bar) or dropped. Shows where it will land, or on commit puts it
         /// there: on this display, or on the display under the cursor. Returns whether the drop changed anything.
@@ -554,15 +628,28 @@ namespace wintabs
                     m_gui.PreviewRectangle = null;
                     return false;
                 }
-                if (!commit)
+                var groupTab = m_gui.FindGroupTabAt(point);
+                if (groupTab is { } named)
                 {
-                    var target = m_backend.GetTabDropTarget(tab, point);
-                    m_gui.PreviewRectangle = target is { } drop ? GetDropPreview(drop.Group, drop.Edge) : null;
-                    return false;
+                    bool valid = named.Group.Desktop == desktop && named.Group != tab.Parent &&
+                        TilingWorkspace.CanAcceptTab(tab, named.Group, null);
+                    m_gui.PreviewRectangle = !commit && valid ? named.Bounds : null;
+                    if (!commit || !valid || !m_backend.MoveTabToContainer(tab, named.Group))
+                        return false;
                 }
-                m_gui.PreviewRectangle = null;
-                if (!m_backend.DropTab(tab, point))
-                    return false;
+                else
+                {
+                    bool dropOnUngrouped = m_gui.IsOnUngroupedTab(point);
+                    if (!commit)
+                    {
+                        var target = m_backend.GetTabDropTarget(tab, point, dropOnUngrouped);
+                        m_gui.PreviewRectangle = target is { } drop ? GetTabMovePreview(drop.Group, drop.Edge) : null;
+                        return false;
+                    }
+                    m_gui.PreviewRectangle = null;
+                    if (!m_backend.DropTab(tab, point, dropOnUngrouped))
+                        return false;
+                }
             }
             OnTilingNodeFocusRequested(this, tab);
             InvalidateLayout();
@@ -655,7 +742,7 @@ namespace wintabs
             target = TilingWorkspace.FindGroupAt(root, point);
             if (target == null)
                 return false;
-            edge = TilingWorkspace.GetDropEdge(target, point);
+            edge = TilingWorkspace.GetUngroupedBarBounds(target).Contains(point) ? null : TilingWorkspace.GetDropEdge(target, point);
             return true;
         }
 
@@ -665,23 +752,47 @@ namespace wintabs
         /// </summary>
         internal bool PreviewOrDropTabFrom(TilingService source, WindowNode tab, Point point, bool commit)
         {
-            m_gui.PreviewRectangle = null;
             if (!Active || m_workspacePaused || !source.Active || source.m_workspacePaused)
+            {
+                ClearGroupPreview();
                 return false;
+            }
 
             var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
             WindowNode? moved;
             using (source.m_backendLock.EnterScope())
             using (m_backendLock.EnterScope())
             {
-                if (!TryGetForeignDrop(point, out var target, out var edge) ||
-                    target != null && !TilingWorkspace.CanAcceptTab(tab, target, edge))
-                    return false;
-                if (!commit)
+                var tree = m_backend.GetTree(desktop);
+                var groupTab = m_gui.FindGroupTabAt(point);
+                StackPanelNode? target = groupTab?.Group;
+                TilingDirection? edge = null;
+                if (groupTab == null)
                 {
-                    m_gui.PreviewRectangle = target == null ? m_display.WorkArea : GetDropPreview(target, edge);
+                    if (!TryGetForeignDrop(point, out target, out edge))
+                    {
+                        ClearGroupPreview();
+                        return false;
+                    }
+                    if (target != null)
+                    {
+                        var dropOnUngrouped = m_gui.IsOnUngroupedTab(point);
+                        edge = dropOnUngrouped ? null : TilingWorkspace.GetTabDropEdge(target, point);
+                        if (!dropOnUngrouped && edge == null && target.SelectedChild is StackPanelNode { IsContainer: true } container)
+                            target = container;
+                    }
+                }
+                if (target != null && (target.Desktop != tree || !TilingWorkspace.CanAcceptTab(tab, target, edge)))
+                {
+                    ClearGroupPreview();
                     return false;
                 }
+                if (!commit)
+                {
+                    m_gui.PreviewRectangle = groupTab?.Bounds ?? (target == null ? GetLayoutWorkArea() : GetTabMovePreview(target, edge));
+                    return false;
+                }
+                ClearGroupPreview();
                 moved = source.m_backend.TransferTab(tab, m_backend, target, edge, desktop);
                 if (moved == null)
                     return false;
@@ -718,7 +829,7 @@ namespace wintabs
                     return;
                 if (!commit)
                 {
-                    m_gui.PreviewRectangle = target == null ? m_display.WorkArea
+                    m_gui.PreviewRectangle = target == null ? GetLayoutWorkArea()
                         : merge ? TilingWorkspace.GetGroupBounds(target)
                         : GetGroupMovePreview(group, target, direction);
                     return;
@@ -785,6 +896,9 @@ namespace wintabs
             bool yAnchored = position.Top == start.Top || position.Bottom == start.Bottom;
             return !(xAnchored && yAnchored);
         }
+
+        private static Rectangle GetTabMovePreview(StackPanelNode target, TilingDirection? edge) =>
+            target.IsContainer ? TilingWorkspace.GetGroupBounds((StackPanelNode)target.Parent!) : GetDropPreview(target, edge);
 
         private static Rectangle GetDropPreview(StackPanelNode group, TilingDirection? direction)
         {
@@ -955,7 +1069,7 @@ namespace wintabs
                         {
                             using (m_backendLock.EnterScope())
                             {
-                                if (tab.Parent is StackPanelNode group)
+                                if (TilingWorkspace.GetGroup(tab) is StackPanelNode group)
                                     m_backend.ResizeNode(group, e.NewPosition, startPosition);
                             }
                         }
@@ -1123,7 +1237,8 @@ namespace wintabs
                     }
                     var parent = node.Parent!;
                     if (saved?.Parent == parent)
-                        parent.Move(parent.IndexOf(node), Math.Min(saved.Index, parent.Children.Count - 1));
+                        parent.Move(parent.IndexOf(node), Math.Clamp(saved.Index,
+                            parent.Children.TakeWhile(child => child is StackPanelNode).Count(), parent.Children.Count - 1));
                 }
 
                 InvalidateLayout();
@@ -1195,7 +1310,7 @@ namespace wintabs
             WindowNode? windowNode;
             using (m_backendLock.EnterScope())
             {
-                windowNode = e.Windows.FirstOrDefault();
+                windowNode = e is StackPanelNode row ? row.SelectedTab : e.Windows.FirstOrDefault();
                 if (windowNode == null || !m_backend.HasWindow(windowNode.WindowReference))
                     return;
                 // Record the target first, so a shortcut pressed straight after builds on this one.
@@ -1446,17 +1561,20 @@ namespace wintabs
             container.Top + Math.Max(0, container.Height - size.Y) / 2,
             size.X, size.Y);
 
-        private int GetPanelSpacing()
+        // Each tile supplies half the gap. Add the other half at the work-area edge, including the taskbar.
+        internal static Rectangle InsetWorkArea(Rectangle area, int gap)
         {
-            double scaling = m_display.Scaling;
-            return (int)(m_windowPadding * scaling);
+            int leading = gap / 2;
+            int trailing = gap - leading;
+            return new Rectangle(area.Left + trailing, area.Top + trailing, area.Right - leading, area.Bottom - leading);
         }
 
-        private Rectangle GetPanelPaddingRect()
-        {
-            double scaling = m_display.Scaling;
-            return new Rectangle(0, (int)((m_panelHeight + m_windowPadding) * scaling), 0, 0);
-        }
+        private Rectangle GetLayoutWorkArea() => InsetWorkArea(m_display.WorkArea, GetPanelSpacing());
+
+        private int GetPanelSpacing() => (int)Math.Round(Math.Max(0, m_windowPadding) * m_display.Scaling);
+
+        private Rectangle GetPanelPaddingRect() =>
+            new(0, (int)Math.Round(m_panelHeight * m_display.Scaling) + GetPanelSpacing(), 0, 0);
 
         private static System.Windows.Thickness ToThickness(Rectangle rc)
         {
@@ -1474,19 +1592,7 @@ namespace wintabs
             });
         }
 
-        private void PropagatePaddingChange()
-        {
-            using (m_backendLock.EnterScope())
-            {
-                foreach (var panel in m_backend.Trees.SelectMany(x => x.Root!.Nodes).OfType<PanelNode>())
-                {
-                    panel.Spacing = GetPanelSpacing();
-                }
-            }
-            UpdateGuiNodeOptions();
-        }
-
-        private void PropagatePanelHeightChange()
+        private void UpdateLayoutSpacing()
         {
             using (m_backendLock.EnterScope())
             {

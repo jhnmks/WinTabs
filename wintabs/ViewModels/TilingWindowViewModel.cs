@@ -11,6 +11,8 @@ namespace wintabs.ViewModels
 {
     public class TilingWindowViewModel : TilingNodeViewModel
     {
+        internal Action<StackPanelNode>? MoveToContainer { get; set; }
+
         private enum RevealState
         {
             /// <summary>
