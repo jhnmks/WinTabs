@@ -40,16 +40,6 @@ namespace wintabs.Windows
             }
         }
 
-        [Flags()]
-        internal enum SetWindowPosFlags : uint
-        {
-            IgnoreResize = 0x0001,
-            IgnoreMove = 0x0002,
-            DoNotActivate = 0x0010,
-            DoNotSendChangingEvent = 0x0400,
-            AsynchronousWindowPosition = 0x4000,
-        }
-
         public static readonly DependencyProperty NonHitTestableContentProperty = DependencyProperty.Register(
             nameof(NonHitTestableContent),
             typeof(Control),

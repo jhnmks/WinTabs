@@ -8,11 +8,13 @@ namespace WinMan.Windows.Utilities
 {
     internal struct BlockTimer
     {
+#if DEBUG
         private readonly TimeSpan m_startTime;
 
         private readonly string? m_callerName = null;
         private readonly string? m_callerFile = null;
         private readonly int m_callerLine = 0;
+#endif
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static BlockTimer Create([CallerMemberName] string callerName = "", [CallerFilePath] string callerFile = "", [CallerLineNumber] int callerLine = 0)
@@ -67,6 +69,7 @@ namespace WinMan.Windows.Utilities
 #endif
         }
 
+#if DEBUG
         private void Log(string? block, TimeSpan elapsed, TimeSpan threshold, int endLine)
         {
             StringBuilder sb = new();
@@ -103,5 +106,6 @@ namespace WinMan.Windows.Utilities
 
             Debug.WriteLine(sb.ToString());
         }
+#endif
     }
 }

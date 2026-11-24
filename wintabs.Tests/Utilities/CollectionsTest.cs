@@ -14,18 +14,6 @@ namespace wintabs.Tests.Utilities
     public class CollectionsTest
     {
         [TestMethod]
-        public void TestAsPairs()
-        {
-            Assert.IsTrue(Collections.AsPairs(new KeyValuePair<int, int>[] { new(1, 2), new(3, 4) }).SequenceEqual(new[] { (1, 2), (3, 4) }));
-        }
-
-        [TestMethod]
-        public void TestAsPairsEmpty()
-        {
-            Assert.IsTrue(Collections.AsPairs(Array.Empty<KeyValuePair<int, int>>()).SequenceEqual(Array.Empty<(int, int)>()));
-        }
-
-        [TestMethod]
         public void TestChangesAdd()
         {
             var (addList, removeList, persistList) = Collections.Changes([1, 2, 3], [1, 2, 3, 4]);
@@ -59,14 +47,6 @@ namespace wintabs.Tests.Utilities
             Assert.IsTrue(addList.SequenceEqual([5, 6, 7]));
             Assert.IsTrue(removeList.SequenceEqual([2, 3, 4]));
             Assert.IsTrue(persistList.SequenceEqual([1]));
-        }
-
-        [TestMethod]
-        public void TestToSequenceComparer()
-        {
-            var comparer = EqualityComparer<int>.Default.ToSequenceComparer();
-            Assert.IsTrue(comparer.Equals([1, 2, 3], [1, 2, 3]));
-            Assert.IsFalse(comparer.Equals([1], [1, 2, 3]));
         }
     }
 }

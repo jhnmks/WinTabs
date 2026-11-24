@@ -13,12 +13,6 @@ using Serilog;
 using System.Threading.Tasks;
 using System.ComponentModel;
 
-#if DEBUG
-using Lock = wintabs.Utilities.DebugLock;
-#else
-using Lock = System.Threading.Lock;
-#endif
-
 namespace wintabs
 {
     /// <summary>
@@ -33,7 +27,6 @@ namespace wintabs
 
         }
 
-        public event EventHandler<TilingFailedEventArgs>? PlacementFailed;
 
         /// <summary>
         /// Current active state.
@@ -127,7 +120,7 @@ namespace wintabs
             m_workspace = workspace;
             m_display = display;
             m_workspacePaused = workspacePaused;
-            m_backend = existingWorkspace ?? new TilingWorkspace(tabsOnly: true);
+            m_backend = existingWorkspace ?? new TilingWorkspace();
             m_gui = new TilingOverlayRenderer(display, GetOverlayAnchor)
             {
                 PanelSpacing = GetPanelSpacing(),
@@ -169,8 +162,6 @@ namespace wintabs
             m_workspace.FocusedWindowChanged += OnWorkspaceFocusChanged;
             m_workspace.WindowAdded += OnWindowAdded;
             m_workspace.WindowRemoved += OnWindowRemoved;
-
-            PlacementFailed += OnPlacementFailed;
 
             m_subscriptions.Add(m_gui);
             m_subscriptions.Add(settings.Subscribe(OnSettingsChanged));
@@ -392,11 +383,6 @@ namespace wintabs
                             anyChanges = true;
                         }
                     }
-                    catch (NoValidPlacementExistsException)
-                    {
-                        PlacementFailed?.Invoke(this, new TilingFailedEventArgs(
-                            TilingError.NoValidPlacementExists, window));
-                    }
                     catch (InvalidWindowReferenceException)
                     {
                         if (m_backend.HasWindow(window))
@@ -508,7 +494,6 @@ namespace wintabs
             m_active = false;
             m_subscriptions.Dispose();
 
-            PlacementFailed = null;
             m_floating.Changed -= OnFloatingChanged;
 
             m_workspace.VirtualDesktopManager.DesktopAdded -= OnDesktopAdded;

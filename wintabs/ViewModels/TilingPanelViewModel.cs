@@ -12,7 +12,6 @@ namespace wintabs.ViewModels
         private Rectangle m_bounds;
         private bool m_isHeaderObscured;
 
-        private bool m_childHasDirectFocus;
 
         internal Action<Point, Action>? BeginGroupDrag { get; set; }
 
@@ -37,7 +36,6 @@ namespace wintabs.ViewModels
 
         public bool IsHeaderVisible { get => m_isHeaderObscured; set => SetField(ref m_isHeaderObscured, value); }
 
-        public bool ChildHasDirectFocus { get => m_childHasDirectFocus; set => SetField(ref m_childHasDirectFocus, value); }
 
         public int GroupNumber { get => m_groupNumber; set => SetField(ref m_groupNumber, value); }
 

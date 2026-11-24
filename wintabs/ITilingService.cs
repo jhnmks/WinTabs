@@ -7,16 +7,8 @@ using wintabs.Layouts.Tiling;
 
 namespace wintabs
 {
-    internal class TilingFailedEventArgs(TilingError reason, IWindow? window = null) : EventArgs
-    {
-        public TilingError FailReason { get; } = reason;
-        public IWindow? FailSource { get; } = window;
-    }
-
     internal interface ITilingService : IDisposable
     {
-        event EventHandler<TilingFailedEventArgs> PlacementFailed;
-
 
         bool Active { get; }
 

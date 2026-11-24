@@ -24,9 +24,6 @@ namespace wintabs
 
         /// <summary>Its app always floats, or it matches a window class rule.</summary>
         Rule = 2,
-
-        /// <summary>It could not fit into any tab group.</summary>
-        DoesNotFit = 4,
     }
 
     /// <summary>

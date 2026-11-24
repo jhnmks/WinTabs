@@ -18,9 +18,6 @@ KillTimer
 GetWindow
 GetShellWindow
 GetWindowLong
-DestroyIcon
-GetClassLong_nIndex
-SHGetFileInfo
 PeekMessage
 SendInput
 GetQueueStatus
@@ -47,4 +44,3 @@ GetWindowLongPtr_nIndex
 
 MSLLHOOKSTRUCT
 KBDLLHOOKSTRUCT
-SHFILEINFOW

@@ -59,12 +59,6 @@ namespace wintabs.Layouts
             m_items = [];
         }
 
-        public Flex(Flex constraints)
-        {
-            ContainerWidth = constraints.ContainerWidth;
-            m_items = [.. constraints.m_items];
-        }
-
         public void InsertItem(int index, double minWidth, double maxWidth)
         {
             Debug.Assert(minWidth.Gte(0));

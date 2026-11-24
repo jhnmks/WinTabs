@@ -25,9 +25,9 @@ namespace wintabs.Tests
         public void WindowGapSeparatesTilesAndWorkAreaEdges(int gap)
         {
             var area = new Rectangle(-1200, -800, 0, 0);
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, TilingService.InsetWorkArea(area, gap), PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, TilingService.InsetWorkArea(area, gap));
             var tree = workspace.GetTree(desktop)!;
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -53,7 +53,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             workspace.UnregisterDesktop(desktop);
         }
 
@@ -62,10 +62,10 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             Assert.ThrowsException<ArgumentException>(() =>
             {
-                workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+                workspace.RegisterDesktop(desktop, m_workarea);
             });
         }
 
@@ -85,21 +85,21 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
         }
 
         [TestMethod]
         public void TabsShareTheWorkAreaBelowTheHeader()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true) { AutoCollapse = true };
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var root = tree.Root!;
             root.Padding = new Rectangle(0, 24, 0, 0);
-            var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow(), maxTreeWidth: 1);
-            var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow(), maxTreeWidth: 1);
+            var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
+            var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
 
             tree.Arrange();
 
@@ -125,9 +125,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void TabGroupsSplitResizeSwapAndCollapse()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -178,9 +178,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void DraggingATabToAnotherGroupPreservesTheWindowAndCollapsesAnEmptyGroup()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var tab = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -206,9 +206,9 @@ namespace wintabs.Tests
         [DataRow(false)]
         public void DroppingAtTheSideOfTheSameGroupCreatesANewGroup(bool left)
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 800), PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 800));
             var tree = workspace.GetTree(desktop)!;
             var other = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var moved = workspace.RegisterWindow(m_windowFactory.CreateDiscordWindow());
@@ -229,9 +229,9 @@ namespace wintabs.Tests
         [DataRow(1170, 400, TilingDirection.Right)]
         public void ATabTilesOnWhicheverSideItIsDroppedAndThePreviewSaysSo(int x, int y, TilingDirection side)
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 800), PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 800));
             var tree = workspace.GetTree(desktop)!;
             workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var moved = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -247,10 +247,10 @@ namespace wintabs.Tests
         [TestMethod]
         public void ThePreviewNeverPromisesADropThatIsRefused()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
             // Too narrow for two Discord windows (940 px minimum) side by side; tall enough to stack them.
-            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 1100), PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 1100));
             var tree = workspace.GetTree(desktop)!;
             workspace.RegisterWindow(m_windowFactory.CreateDiscordWindow());
             var moved = workspace.RegisterWindow(m_windowFactory.CreateDiscordWindow());
@@ -268,10 +268,10 @@ namespace wintabs.Tests
         public void ATabMovesToAGroupOnAnotherDisplay(TilingDirection? edge)
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var left = new TilingWorkspace(tabsOnly: true);
-            var right = new TilingWorkspace(tabsOnly: true);
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var left = new TilingWorkspace();
+            var right = new TilingWorkspace();
+            left.RegisterDesktop(desktop, m_workarea);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var moving = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var resident = right.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var target = (StackPanelNode)resident.Parent!;
@@ -292,10 +292,10 @@ namespace wintabs.Tests
         public void ATabMovesOntoAnEmptyDisplay()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var left = new TilingWorkspace(tabsOnly: true);
-            var right = new TilingWorkspace(tabsOnly: true);
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var left = new TilingWorkspace();
+            var right = new TilingWorkspace();
+            left.RegisterDesktop(desktop, m_workarea);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var moving = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
 
@@ -310,10 +310,10 @@ namespace wintabs.Tests
         public void MovingAGroupToAnEmptyDisplayPreservesTabsFocusAndOriginalPositions()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var source = new TilingWorkspace(tabsOnly: true);
-            var destination = new TilingWorkspace(tabsOnly: true);
-            source.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            destination.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var source = new TilingWorkspace();
+            var destination = new TilingWorkspace();
+            source.RegisterDesktop(desktop, m_workarea);
+            destination.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var first = source.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var second = source.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var group = (StackPanelNode)first.Parent!;
@@ -349,9 +349,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void EachTabGroupRemembersItsSelectionWhenFocusMovesToAnotherGroup()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var first = workspace.RegisterWindow(m_windowFactory.CreateNotepadWindow());
             var second = workspace.RegisterWindow(m_windowFactory.CreateNotepadWindow());
@@ -376,7 +376,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             Assert.ThrowsException<ArgumentException>(() =>
             {
                 workspace.UnregisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -388,7 +388,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var explorer = m_windowFactory.CreateExplorerWindow();
             workspace.RegisterWindow(explorer);
             Assert.ThrowsException<WindowAlreadyRegisteredException>(() =>
@@ -402,7 +402,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var explorer = m_windowFactory.CreateExplorerWindow();
             workspace.RegisterWindow(explorer);
 
@@ -414,7 +414,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var explorer = m_windowFactory.CreateExplorerWindow();
             // var node = workspace.RegisterWindow(explorer);
 
@@ -426,7 +426,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             Assert.IsNull(workspace.GetFocus(desktop));
         }
 
@@ -435,7 +435,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var explorer = m_windowFactory.CreateExplorerWindow();
             var node = workspace.RegisterWindow(explorer);
 
@@ -446,9 +446,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void CtrlArrowCyclesTabsAndWraps()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var third = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -464,9 +464,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void CtrlShiftArrowMovesTheTabOnePositionAndStopsAtTheEnds()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var group = (StackPanelNode)first.Parent!;
@@ -482,9 +482,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void CtrlShiftNumberMovesTheTabToTheEndOfThatGroup()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -514,9 +514,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void ALoneTabRefusesToSplitAndKeepsTheLayout()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -535,9 +535,9 @@ namespace wintabs.Tests
             }
 
             // The only window on a desktop cannot split either.
-            var solo = new TilingWorkspace(tabsOnly: true);
+            var solo = new TilingWorkspace();
             var soloDesktop = m_desktopFactory.CreateVirtualDesktop();
-            solo.RegisterDesktop(soloDesktop, m_workarea, PanelOrientation.Horizontal);
+            solo.RegisterDesktop(soloDesktop, m_workarea);
             var only = solo.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             solo.GetTree(soloDesktop)!.Arrange();
             Assert.IsFalse(solo.SplitTab(only, TilingDirection.Right));
@@ -547,10 +547,10 @@ namespace wintabs.Tests
         public void TransferFocusedTabMovesItToAnotherDisplaysGroup()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var left = new TilingWorkspace(tabsOnly: true);
-            var right = new TilingWorkspace(tabsOnly: true);
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var left = new TilingWorkspace();
+            var right = new TilingWorkspace();
+            left.RegisterDesktop(desktop, m_workarea);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var moving = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var staying = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var resident = right.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -576,8 +576,8 @@ namespace wintabs.Tests
         public void ContainerReservesAnInnerBarAndUsesTheExistingTabShortcuts()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var group = (StackPanelNode)tree.Root!;
             group.Padding = new Rectangle(0, 24, 0, 0);
@@ -608,7 +608,7 @@ namespace wintabs.Tests
             Assert.IsTrue(workspace.MoveFocusedTab(desktop, 1));
             workspace.SetFocus(first);
             Assert.IsFalse(workspace.MoveFocusedTab(desktop, -1));
-            Assert.IsNull(TilingWorkspace.FindContainerBarAt(group, bar.Center));
+            Assert.IsNull(workspace.GetTabDropTarget(first, bar.Center));
             Assert.IsNull(workspace.GetCycledTab(desktop, 1));
 
             Assert.IsTrue(workspace.Unpack(container));
@@ -621,8 +621,8 @@ namespace wintabs.Tests
         public void UnpackingAllGroupsKeepsWindowOrderAndFocus()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var loose = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -644,8 +644,8 @@ namespace wintabs.Tests
         public void CreatingAGroupFromAnInnerTabMakesASiblingAndKeepsTheTabSelected()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var original = workspace.WrapInContainer(first)!;
             workspace.SetFocus(first);
@@ -666,8 +666,8 @@ namespace wintabs.Tests
         public void OuterGroupShortcutsRememberWindowSelectionAndCanReorderUngrouped()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var loose = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -701,8 +701,8 @@ namespace wintabs.Tests
         {
             GroupNumbers.Reset();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var regular = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var first = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var second = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -724,8 +724,8 @@ namespace wintabs.Tests
         {
             GroupNumbers.Reset();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var loose = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var resident = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var outer = (StackPanelNode)loose.Parent!;
@@ -755,8 +755,8 @@ namespace wintabs.Tests
         public void CenterAndHeaderDropsJoinTheSelectedGroup(int x, int y)
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             tree.Root!.Padding = new Rectangle(0, 24, 0, 0);
             var incoming = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -778,8 +778,8 @@ namespace wintabs.Tests
         public void InnerTabCanTileAtEitherEdgeWithoutCountingItsSizeTwice(int x, TilingDirection side)
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 800), PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 800));
             var tree = workspace.GetTree(desktop)!;
             tree.Root!.Padding = new Rectangle(0, 24, 0, 0);
             var incoming = workspace.RegisterWindow(m_windowFactory.CreateDiscordWindow());
@@ -801,8 +801,8 @@ namespace wintabs.Tests
         public void MovingTheLastInnerTabToItsOuterBarRemovesTheContainer()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var workspace = new TilingWorkspace(tabsOnly: true);
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var group = (StackPanelNode)tree.Root!;
             group.Padding = new Rectangle(0, 24, 0, 0);
@@ -820,10 +820,10 @@ namespace wintabs.Tests
         public void TransferringATabBetweenContainersPreservesItsNodeAndOriginalPosition()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var left = new TilingWorkspace(tabsOnly: true);
-            var right = new TilingWorkspace(tabsOnly: true);
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var left = new TilingWorkspace();
+            var right = new TilingWorkspace();
+            left.RegisterDesktop(desktop, m_workarea);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var tab = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var source = left.WrapInContainer(tab)!;
             var existing = right.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -842,9 +842,9 @@ namespace wintabs.Tests
         public void MergingAGroupAppendsItsTabsInOrderAndKeepsItsSelection()
         {
             GroupNumbers.Reset();
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -873,10 +873,10 @@ namespace wintabs.Tests
         public void AGroupMergesIntoAGroupOnAnotherDisplay()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var left = new TilingWorkspace(tabsOnly: true);
-            var right = new TilingWorkspace(tabsOnly: true);
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var left = new TilingWorkspace();
+            var right = new TilingWorkspace();
+            left.RegisterDesktop(desktop, m_workarea);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var a = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var c = right.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -899,9 +899,9 @@ namespace wintabs.Tests
         [TestMethod]
         public void AGroupThatDoesNotFitIsNotMerged()
         {
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 1100), PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, new Rectangle(0, 0, 1200, 1100));
             var tree = workspace.GetTree(desktop)!;
             var small = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var large = workspace.RegisterWindow(m_windowFactory.CreateDiscordWindow());
@@ -924,10 +924,10 @@ namespace wintabs.Tests
         public void GroupsSwapAcrossDisplays()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var left = new TilingWorkspace(tabsOnly: true);
-            var right = new TilingWorkspace(tabsOnly: true);
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var left = new TilingWorkspace();
+            var right = new TilingWorkspace();
+            left.RegisterDesktop(desktop, m_workarea);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var a = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             left.GetTree(desktop)!.Arrange();
@@ -958,10 +958,10 @@ namespace wintabs.Tests
         public void GroupsTileBesideAGroupOnAnotherDisplay()
         {
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var left = new TilingWorkspace(tabsOnly: true);
-            var right = new TilingWorkspace(tabsOnly: true);
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var left = new TilingWorkspace();
+            var right = new TilingWorkspace();
+            left.RegisterDesktop(desktop, m_workarea);
+            right.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var a = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var c = right.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var moving = (StackPanelNode)a.Parent!;
@@ -984,9 +984,9 @@ namespace wintabs.Tests
         public void GroupsAreNumberedFromOneAndReuseFreedNumbers()
         {
             GroupNumbers.Reset();
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
 
             // Empty groups (one per display and desktop) never take a number.
@@ -1016,9 +1016,9 @@ namespace wintabs.Tests
         public void ClosingAGroupMovesTheLaterNumbersUpInItsSequence()
         {
             GroupNumbers.Reset();
-            var workspace = new TilingWorkspace(tabsOnly: true);
+            var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
             var tree = workspace.GetTree(desktop)!;
             var a = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -1046,11 +1046,11 @@ namespace wintabs.Tests
         {
             GroupNumbers.Reset();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var right = new TilingWorkspace(tabsOnly: true);
-            var left = new TilingWorkspace(tabsOnly: true);
-            right.RegisterDesktop(desktop, new Rectangle(-1920, 0, 0, 1080), PanelOrientation.Horizontal);
+            var right = new TilingWorkspace();
+            var left = new TilingWorkspace();
+            right.RegisterDesktop(desktop, new Rectangle(-1920, 0, 0, 1080));
             right.GetTree(desktop)!.GroupNumberLane = 1;
-            left.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            left.RegisterDesktop(desktop, m_workarea);
             var rightLoose = right.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var rightNested = right.WrapInContainer(right.RegisterWindow(m_windowFactory.CreateExplorerWindow()))!;
             var leftLoose = left.RegisterWindow(m_windowFactory.CreateExplorerWindow());
@@ -1080,10 +1080,10 @@ namespace wintabs.Tests
         {
             GroupNumbers.Reset();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            var removed = new TilingWorkspace(tabsOnly: true);
-            var remaining = new TilingWorkspace(tabsOnly: true);
-            removed.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            remaining.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080), PanelOrientation.Horizontal);
+            var removed = new TilingWorkspace();
+            var remaining = new TilingWorkspace();
+            removed.RegisterDesktop(desktop, m_workarea);
+            remaining.RegisterDesktop(desktop, new Rectangle(1920, 0, 3840, 1080));
             var a = removed.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var b = removed.RegisterWindow(m_windowFactory.CreateExplorerWindow());
             var outer = (StackPanelNode)a.Parent!;
@@ -1103,7 +1103,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
 
             var explorer = m_windowFactory.CreateExplorerWindow();
             workspace.RegisterWindow(explorer);
@@ -1116,7 +1116,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
 
             var explorer = m_windowFactory.CreateExplorerWindow();
             //var node = workspace.RegisterWindow(explorer);
@@ -1132,7 +1132,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
 
             Assert.IsNotNull(workspace.GetTree(desktop));
         }
@@ -1143,7 +1143,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            // workspace.RegisterDesktop(desktop, m_rectangle, PanelOrientation.Horizontal);
+            // workspace.RegisterDesktop(desktop, m_rectangle);
 
             Assert.IsNull(workspace.GetTree(desktop));
         }
@@ -1154,7 +1154,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
 
             var explorer = m_windowFactory.CreateExplorerWindow();
             workspace.RegisterWindow(explorer);
@@ -1167,7 +1167,7 @@ namespace wintabs.Tests
         {
             var workspace = new TilingWorkspace();
             var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
+            workspace.RegisterDesktop(desktop, m_workarea);
 
             var explorer = m_windowFactory.CreateExplorerWindow();
             //var node = workspace.RegisterWindow(explorer);
@@ -1175,193 +1175,6 @@ namespace wintabs.Tests
             Assert.IsFalse(workspace.HasWindow(explorer));
         }
 
-
-        [TestMethod]
-        public void TestMoveNodeFlat()
-        {
-            var workspace = new TilingWorkspace();
-            var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-
-            var explorer1 = m_windowFactory.CreateExplorerWindow();
-            var node1 = workspace.RegisterWindow(explorer1);
-
-            var explorer2 = m_windowFactory.CreateExplorerWindow();
-            var node2 = workspace.RegisterWindow(explorer2);
-
-            var tree = workspace.GetTree(desktop);
-            tree.WorkArea = new WinMan.Rectangle(0, 0, 2000, 2000);
-            tree.Measure();
-            tree.Arrange();
-
-            workspace.MoveNode(node1, node2.ComputedRectangle.Center);
-
-            Assert.AreEqual(node1.Parent.IndexOf(node1), 1);
-            Assert.AreEqual(node2.Parent.IndexOf(node2), 0);
-        }
-
-        [TestMethod]
-        public void TestMoveNodeFlatLong()
-        {
-            var workspace = new TilingWorkspace();
-            var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-
-            var explorer1 = m_windowFactory.CreateExplorerWindow();
-            var node1 = workspace.RegisterWindow(explorer1);
-
-            var explorer2 = m_windowFactory.CreateExplorerWindow();
-            var node2 = workspace.RegisterWindow(explorer2);
-
-            var explorer3 = m_windowFactory.CreateExplorerWindow();
-            var node3 = workspace.RegisterWindow(explorer3);
-
-            var explorer4 = m_windowFactory.CreateExplorerWindow();
-            var node4 = workspace.RegisterWindow(explorer4);
-
-            var explorer5 = m_windowFactory.CreateExplorerWindow();
-            var node5 = workspace.RegisterWindow(explorer5);
-
-            var tree = workspace.GetTree(desktop);
-            tree.WorkArea = new WinMan.Rectangle(0, 0, 2000, 2000);
-            tree.Measure();
-            tree.Arrange();
-
-            void AssertPositions(params TilingNode[] nodes)
-            {
-                var parent = tree.Root;
-                for (int i = 0; i < nodes.Length; i++)
-                {
-                    Assert.AreEqual(parent.IndexOf(nodes[i]), i);
-                }
-            }
-
-            AssertPositions(node1, node2, node3, node4, node5);
-
-            workspace.MoveNode(node1, node2.ComputedRectangle.Center);
-            tree.Measure();
-            tree.Arrange();
-
-            AssertPositions(node2, node1, node3, node4, node5);
-
-            workspace.MoveNode(node3, node2.ComputedRectangle.Center);
-            tree.Measure();
-            tree.Arrange();
-
-            AssertPositions(node3, node2, node1, node4, node5);
-
-            workspace.MoveNode(node5, node3.ComputedRectangle.Center);
-            tree.Measure();
-            tree.Arrange();
-
-            AssertPositions(node5, node3, node2, node1, node4);
-
-            workspace.MoveNode(node2, node1.ComputedRectangle.Center);
-            tree.Measure();
-            tree.Arrange();
-
-            AssertPositions(node5, node3, node1, node2, node4);
-        }
-
-        [TestMethod]
-        public void TestMoveWindowFlat()
-        {
-            var workspace = new TilingWorkspace();
-            var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-
-            var explorer1 = m_windowFactory.CreateExplorerWindow();
-            var node1 = workspace.RegisterWindow(explorer1);
-
-            var explorer2 = m_windowFactory.CreateExplorerWindow();
-            var node2 = workspace.RegisterWindow(explorer2);
-
-            var tree = workspace.GetTree(desktop);
-            tree.WorkArea = new WinMan.Rectangle(0, 0, 2000, 2000);
-            tree.Measure();
-            tree.Arrange();
-
-            workspace.MoveWindow(explorer1, node2.ComputedRectangle.Center, allowNesting: false);
-
-            Assert.AreEqual(node1.Parent.IndexOf(node1), 1);
-            Assert.AreEqual(node2.Parent.IndexOf(node2), 0);
-        }
-
-        [TestMethod]
-        public void TestMoveAfterSameParent()
-        {
-            var workspace = new TilingWorkspace();
-            var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-
-            var explorer1 = m_windowFactory.CreateExplorerWindow();
-            var node1 = workspace.RegisterWindow(explorer1);
-
-            var explorer2 = m_windowFactory.CreateExplorerWindow();
-            var node2 = workspace.RegisterWindow(explorer2);
-
-            var explorer3 = m_windowFactory.CreateExplorerWindow();
-            var node3 = workspace.RegisterWindow(explorer3);
-
-            workspace.SetFocus(node1);
-            Assert.ThrowsException<ArgumentException>(() =>
-            {
-                workspace.MoveAfter(node1, node2);
-            });
-        }
-
-        [TestMethod]
-        public void TestMoveBeforeSameParent()
-        {
-            var workspace = new TilingWorkspace();
-            var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-
-            var explorer1 = m_windowFactory.CreateExplorerWindow();
-            var node1 = workspace.RegisterWindow(explorer1);
-
-            var explorer2 = m_windowFactory.CreateExplorerWindow();
-            var node2 = workspace.RegisterWindow(explorer2);
-
-            var explorer3 = m_windowFactory.CreateExplorerWindow();
-            var node3 = workspace.RegisterWindow(explorer3);
-
-            workspace.SetFocus(node1);
-            Assert.ThrowsException<ArgumentException>(() =>
-            {
-                workspace.MoveBefore(node1, node2);
-            });
-        }
-
-        [TestMethod]
-        public void TestPullUpFromChain()
-        {
-            var workspace = new TilingWorkspace();
-            var desktop = m_desktopFactory.CreateVirtualDesktop();
-            workspace.RegisterDesktop(desktop, m_workarea, PanelOrientation.Horizontal);
-            var root = workspace.GetTree(desktop).Root;
-
-            var explorer1 = m_windowFactory.CreateExplorerWindow();
-            var node1 = workspace.RegisterWindow(explorer1);
-
-            var explorer2 = m_windowFactory.CreateExplorerWindow();
-            var node2 = workspace.RegisterWindow(explorer2);
-
-            workspace.WrapInSplitPanel(node1, true);
-            node2.Parent.Detach(node2);
-            node1.Parent.Attach(node2);
-            workspace.WrapInStackPanel(node1);
-            node2.Parent.Detach(node2);
-
-            Assert.AreEqual(root.Children.Count, 1);
-            var splitPanelNode = (SplitPanelNode)root.Children[0];
-            Assert.AreEqual(splitPanelNode.Children.Count, 1);
-            var stackPanelNode = (StackPanelNode)splitPanelNode.Children[0];
-            Assert.AreEqual(stackPanelNode.Children.Count, 1);
-            Assert.AreEqual(stackPanelNode.Children[0], node1);
-
-            workspace.PullUp(node1);
-        }
 
         [TestMethod]
         public void TestRealWorkspaceInstance()

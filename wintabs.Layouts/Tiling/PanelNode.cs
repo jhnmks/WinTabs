@@ -109,39 +109,7 @@ namespace wintabs.Layouts.Tiling
         protected abstract void AttachCore(int index, TilingNode node);
         protected abstract void DetachCore(TilingNode node);
 
-        /// <summary>
-        /// The maximum size that this child can have.
-        /// </summary>
-        public abstract Point GetMaxChildSize(TilingNode node);
-
-        /// <summary>
-        /// The maximum size that this node can have, if it becomes a child.
-        /// </summary>
-        public abstract Point GetMaxSizeForInsert(TilingNode node);
-
         public abstract void Move(int fromIndex, int toIndex);
-
-        public void Cleanup(bool collapse = false)
-        {
-            RemoveIfEmpty();
-            if (collapse)
-            {
-                CollapseIfSingle();
-            }
-        }
-
-        public void RemoveIfEmpty()
-        {
-            if (Children.Count == 0 && Parent != null)
-            {
-                var parent = Parent;
-                Remove();
-                if (parent.Children.Count <= 1)
-                {
-                    parent.Cleanup();
-                }
-            }
-        }
 
         public void CollapseIfSingle()
         {

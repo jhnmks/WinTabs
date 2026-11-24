@@ -2,14 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Windows.Controls;
-using System.Xml.Linq;
 
 using wintabs.Layouts;
 using wintabs.Layouts.Tiling;
-using wintabs.Utilities;
 
-using Windows.Devices.Enumeration;
 
 using WinMan;
 
@@ -18,41 +14,14 @@ namespace wintabs
 
     internal enum TilingError
     {
-        Failed,
         MissingTarget,
-        InvalidTarget,
         MissingAdjacentWindow,
-        CausesRecursiveNesting,
-        ModifiesTopLevelPanel,
-        NoValidPlacementExists,
-        TargetCannotFit,
-        PullsBeyondTopLevelPanel,
-        NestingInStackPanel,
         NoGroupInDirection,
     }
 
-    internal class TilingFailedException : InvalidOperationException
+    internal class TilingFailedException(TilingError reason) : InvalidOperationException
     {
-        public TilingError FailReason { get; } = TilingError.Failed;
-
-        public TilingFailedException(TilingError reason = TilingError.Failed)
-        {
-            FailReason = reason;
-        }
-
-        public TilingFailedException(string? message, TilingError reason = TilingError.Failed) : base(message)
-        {
-            FailReason = reason;
-        }
-
-        public TilingFailedException(string? message, Exception? innerException, TilingError reason = TilingError.Failed) : base(message, innerException)
-        {
-            FailReason = reason;
-        }
-    }
-
-    public class NoValidPlacementExistsException : Exception
-    {
+        public TilingError FailReason { get; } = reason;
     }
 
     public class WindowAlreadyRegisteredException : Exception
@@ -112,26 +81,18 @@ namespace wintabs
         }
     }
 
-    internal class TilingWorkspace(bool tabsOnly = false)
+    internal class TilingWorkspace
     {
         private readonly TilingWorkspaceState m_states = new();
         private readonly Dictionary<IWindow, Rectangle> m_originalPositions = [];
 
         public IEnumerable<DesktopTree> Trees => m_states.States.Select(x => x.DesktopTree);
 
-        public bool AutoCollapse { get; set; } = false;
-
-
-        public PanelNode CreateRoot(PanelOrientation orientation)
-        {
-            return tabsOnly ? new StackPanelNode() : new SplitPanelNode { Orientation = orientation };
-        }
-
-        public void RegisterDesktop(IVirtualDesktop virtualDesktop, Rectangle workArea, PanelOrientation orientation)
+        public void RegisterDesktop(IVirtualDesktop virtualDesktop, Rectangle workArea)
         {
             var tree = new DesktopTree
             {
-                Root = CreateRoot(orientation),
+                Root = new StackPanelNode(),
                 WorkArea = workArea,
             };
             m_states.AddState(virtualDesktop, new DesktopState
@@ -152,36 +113,28 @@ namespace wintabs
             tree.Root = null;
         }
 
-        public WindowNode RegisterWindow(IWindow window, int maxTreeWidth = 100)
+        public WindowNode RegisterWindow(IWindow window)
         {
             var state = GetValidatedState(window);
-            var focusedNode = state.FocusedNode;
-            if (tabsOnly)
+            var root = state.DesktopTree.Root!;
+            // A new window opens beside the focused tab, including inside a named group.
+            var group = state.FocusedNode?.Parent as StackPanelNode ?? root.Nodes.OfType<StackPanelNode>().FirstOrDefault(x => !x.IsContainer);
+            if (group == null)
             {
-                var root = state.DesktopTree.Root!;
-                // A new window opens as a tab next to the focused one, in the same row (also inside a container).
-                var group = focusedNode?.Parent as StackPanelNode ?? root.Nodes.OfType<StackPanelNode>().FirstOrDefault(x => !x.IsContainer);
-                if (group == null)
-                {
-                    group = new StackPanelNode();
-                    state.DesktopTree.Root = group;
-                }
-                return RegisterWindow(window, group);
+                group = new StackPanelNode();
+                state.DesktopTree.Root = group;
             }
-
-            var parent = ResolveParent(state, focusedNode);
-            parent = ResolveParentWithWidthConstraint(parent, focusedNode, window, maxTreeWidth);
-            return RegisterWindow(window, parent, focusedNode as WindowNode);
+            return RegisterWindow(window, group);
         }
 
-        public WindowNode RegisterWindow(IWindow window, PanelNode parent, WindowNode? anchor = null)
+        public WindowNode RegisterWindow(IWindow window, StackPanelNode parent)
         {
             if (m_states.FindByTree(window) != null)
                 throw new WindowAlreadyRegisteredException();
 
             var newNode = new WindowNode(window);
             var position = window.Position;
-            AttachToParent(newNode, parent);
+            parent.Attach(newNode);
             m_originalPositions[window] = position;
             return newNode;
         }
@@ -197,85 +150,6 @@ namespace wintabs
             return state;
         }
 
-        private static PanelNode ResolveParent(DesktopState state, TilingNode? focusedNode)
-            => focusedNode is WindowNode focusedWindow
-                ? focusedWindow.Parent ?? state.DesktopTree.Root!
-                : state.DesktopTree.Root!;
-
-        private PanelNode ResolveParentWithWidthConstraint(
-            PanelNode parent, TilingNode? focusedNode, IWindow window, int maxTreeWidth)
-        {
-            if (!IsAtMaxWidth(parent, maxTreeWidth) || parent is not SplitPanelNode parentSplit)
-                return parent;
-
-            var nodeToSplit = SelectNodeToSplit(parent, focusedNode);
-
-            if (nodeToSplit is WindowNode)
-                TrySplitNode(nodeToSplit, parentSplit, window);
-
-            return nodeToSplit.Parent!;
-        }
-
-        private static bool IsAtMaxWidth(PanelNode parent, int maxTreeWidth)
-            => parent.Children.Count >= maxTreeWidth;
-
-        private static TilingNode SelectNodeToSplit(PanelNode parent, TilingNode? focusedNode)
-            => parent.Children.Contains(focusedNode) ? focusedNode! : parent.Children.Last();
-
-        private void TrySplitNode(TilingNode nodeToSplit, SplitPanelNode parentSplit, IWindow window)
-        {
-            WrapInSplitPanel(nodeToSplit, vertical: parentSplit.Orientation == PanelOrientation.Horizontal);
-            ArrangeWithFallback(nodeToSplit);
-
-            if (!CanFitLossy(nodeToSplit.Parent!, window))
-                nodeToSplit.Parent!.CollapseIfSingle();
-        }
-
-        private static void ArrangeWithFallback(TilingNode node)
-        {
-            try
-            {
-                node.Desktop!.Arrange();
-            }
-            catch (UnsatisfiableFlexConstraintsException)
-            {
-                node.Parent!.CollapseIfSingle();
-            }
-        }
-
-        private void AttachToParent(WindowNode newNode, PanelNode parent)
-        {
-            if (parent is not StackPanelNode && !CanFitLossy(parent, newNode))
-                throw new NoValidPlacementExistsException();
-
-            parent.Attach(newNode);
-        }
-
-        private static bool CanFitLossy(PanelNode parent, IWindow window)
-        {
-            if (parent.ComputedRectangle == default)
-            {
-                return true;
-            }
-
-            var node = new WindowNode(window);
-            node.Measure();
-            return CanFitLossy(parent, node);
-        }
-
-        private static bool CanFitLossy(PanelNode parent, TilingNode node)
-        {
-            if (parent.ComputedRectangle == default)
-            {
-                return true;
-            }
-
-            var minSize = node.MinSize;
-            var maxSize = parent.GetMaxSizeForInsert(node);
-
-            return minSize.X <= maxSize.X && minSize.Y <= maxSize.Y;
-        }
-
         public void UnregisterWindow(IWindow window)
         {
             var state = m_states.FindByTree(window) ?? throw new ArgumentException(null, nameof(window));
@@ -285,17 +159,10 @@ namespace wintabs
             }
 
             var windowNode = state.DesktopTree.FindNode(window)!;
-            if (tabsOnly)
-            {
-                var group = GetGroup(windowNode)!;
-                DetachTab(windowNode);
-                if (group.Children.Count == 0)
-                    RemoveEmptyGroup(group);
-            }
-            else
-            {
-                windowNode.Remove(cleanup: true, collapse: AutoCollapse);
-            }
+            var group = GetGroup(windowNode)!;
+            DetachTab(windowNode);
+            if (group.Children.Count == 0)
+                RemoveEmptyGroup(group);
             m_originalPositions.Remove(window);
         }
 
@@ -459,10 +326,6 @@ namespace wintabs
             root.Nodes.OfType<StackPanelNode>().FirstOrDefault(group => !group.IsContainer && group.Children.Count != 0 && GetGroupBounds(group).Contains(point));
 
         /// <summary>The container whose (inner) tab bar contains the point, if any.</summary>
-        public static StackPanelNode? FindContainerBarAt(PanelNode root, Point point) =>
-            root.Nodes.OfType<StackPanelNode>().FirstOrDefault(container => container.IsContainer &&
-                ((StackPanelNode)container.Parent!).SelectedChild == container && GetContainerBarBounds(container).Contains(point));
-
         public static Rectangle GetUngroupedBarBounds(StackPanelNode group)
         {
             if (!group.HasContainers || group.SelectedChild is not WindowNode)
@@ -513,7 +376,7 @@ namespace wintabs
             if (edge != null)
                 return false;
             tab.Measure();
-            var size = target.GetMaxSizeForInsert(tab);
+            var size = target.GetAvailableTabSize();
             return tab.MinSize.X <= size.X && tab.MinSize.Y <= size.Y;
         }
 
@@ -837,7 +700,7 @@ namespace wintabs
             }
 
             var oldParent = source.Parent!;
-            source.Remove();
+            oldParent.Detach(source);
             InsertGroup(target, source, direction);
             CollapseSplit(oldParent);
             return true;
@@ -965,266 +828,6 @@ namespace wintabs
                 return null;
             }
             return state.DesktopTree.FindNode(window);
-        }
-
-        public void MoveNode(TilingNode node, Point pt, bool allowNesting = true)
-        {
-            if (node.Parent == null)
-                throw new ArgumentException($"Node cannot be a top-level node!", nameof(node));
-
-            if (node.Desktop == null)
-                throw new ArgumentException($"Node must be registered with the backend!", nameof(node));
-
-            var nodeAtPoint = node.Desktop.Root!.Windows
-                .Where(x => x != node)
-                .FirstOrDefault<TilingNode>(x => x.ComputedRectangle.Contains(pt)) ?? node.Desktop.Root!.Nodes
-                    .OfType<PanelNode>()
-                    .Where(x => x != node)
-                    .FirstOrDefault(x => Rectangle.OffsetAndSize(
-                        x.ComputedRectangle.Left - x.Padding.Left,
-                        x.ComputedRectangle.Top - x.Padding.Top,
-                        x.ComputedRectangle.Width + x.Padding.Left + x.Padding.Right,
-                        x.Padding.Top).Contains(pt));
-            if (nodeAtPoint == null || nodeAtPoint.Parent == null)
-                return;
-
-            if (nodeAtPoint.PathToRoot.Contains(node))
-                throw new TilingFailedException(TilingError.CausesRecursiveNesting);
-
-            if (nodeAtPoint.PathToRoot.OfType<StackPanelNode>().Any() && node is not WindowNode)
-                throw new TilingFailedException(TilingError.NestingInStackPanel);
-
-            if (allowNesting)
-            {
-                if (node.Parent != nodeAtPoint.Parent)
-                {
-                    // Node moved over another node that NOT a sibling
-                    var oldParent = node.Parent;
-                    try
-                    {
-                        if (!MoveNodeTest(node, nodeAtPoint.Parent, pt))
-                        {
-                            return;
-                        }
-                        node.Parent.Detach(node);
-                        var insertionIndex = FindInsertionIndex(nodeAtPoint, pt);
-                        nodeAtPoint.Parent.Attach(insertionIndex, node);
-                        oldParent.Cleanup(collapse: AutoCollapse);
-                    }
-                    catch (UnsatisfiableFlexConstraintsException)
-                    {
-                        throw new TilingFailedException(TilingError.TargetCannotFit);
-                    }
-                }
-                else if (node.Parent is not StackPanelNode) // Do not rearrange items in stack panel
-                {
-                    try
-                    {
-                        var newPosition = TransferSize(node.ComputedRectangle, nodeAtPoint.ComputedRectangle);
-                        if (newPosition.Contains(pt))
-                        {
-                            // Node moved over another node that IS a sibling
-                            var nodeIndex = node.Parent.Children.IndexOf(node);
-                            var targetIndex = node.Parent.Children.IndexOf(nodeAtPoint);
-
-                            node.Parent.Move(nodeIndex, targetIndex);
-                        }
-                    }
-                    catch (UnsatisfiableFlexConstraintsException)
-                    {
-                        throw new TilingFailedException(TilingError.Failed);
-                    }
-                }
-            }
-            else if (node.Parent != nodeAtPoint)
-            {
-                try
-                {
-                    node.Swap(nodeAtPoint);
-                }
-                catch (UnsatisfiableFlexConstraintsException)
-                {
-                    throw new TilingFailedException(TilingError.Failed);
-                }
-            }
-        }
-
-        private static int FindInsertionIndex(TilingNode nodeAtPoint, Point pt)
-        {
-            Debug.Assert(nodeAtPoint.Parent != null);
-            var insertionIndex = nodeAtPoint.Parent!.IndexOf(nodeAtPoint);
-            if (nodeAtPoint.Parent is GridLikeNode grid)
-            {
-                if (grid.CanResizeInOrientation(PanelOrientation.Horizontal))
-                {
-                    if (nodeAtPoint.ComputedRectangle.Left + nodeAtPoint.ComputedRectangle.Width / 2 < pt.X)
-                    {
-                        // Right half of the window in a horizontal panel
-                        return insertionIndex + 1;
-                    }
-                }
-                else if (nodeAtPoint.ComputedRectangle.Top + nodeAtPoint.ComputedRectangle.Height / 2 < pt.Y)
-                {
-                    // Lower half of the window in a vertical panel
-                    return insertionIndex + 1;
-                }
-            }
-            else if (nodeAtPoint.Parent is StackPanelNode stack)
-            {
-                return stack.Children.Count;
-            }
-            return insertionIndex;
-        }
-
-        internal void WrapInSplitPanel(TilingNode node, bool vertical)
-        {
-            var isOnlyChild = node.Parent?.Parent != null && node.Parent.Children.Count == 1;
-            if (!isOnlyChild && node.Ancestors.OfType<StackPanelNode>().Any())
-            {
-                throw new TilingFailedException(TilingError.NestingInStackPanel);
-            }
-
-            if (node.Parent == null)
-                throw new TilingFailedException(TilingError.ModifiesTopLevelPanel);
-            // Parent is not the top-level panel and this is the only child
-            if (isOnlyChild)
-            {
-                SwapPanels(node.Parent, new SplitPanelNode
-                {
-                    Orientation = vertical ? PanelOrientation.Vertical : PanelOrientation.Horizontal,
-                });
-            }
-            else
-            {
-                node.Embed(new SplitPanelNode
-                {
-                    Orientation = vertical ? PanelOrientation.Vertical : PanelOrientation.Horizontal,
-                });
-            }
-        }
-
-        internal void WrapInStackPanel(TilingNode node)
-        {
-            var isOnlyChild = node.Parent?.Parent != null && node.Parent.Children.Count == 1;
-
-            if (!isOnlyChild && node.Ancestors.OfType<StackPanelNode>().Any())
-            {
-                throw new TilingFailedException(TilingError.NestingInStackPanel);
-            }
-
-            if (!isOnlyChild && node.Nodes.Where(x => x is not WindowNode).Any())
-            {
-                throw new TilingFailedException(TilingError.NestingInStackPanel);
-            }
-
-            if (node.Parent == null)
-                throw new TilingFailedException(TilingError.ModifiesTopLevelPanel);
-
-            if (isOnlyChild)
-            {
-                SwapPanels(node.Parent, new StackPanelNode());
-            }
-            else
-            {
-                node.Embed(new StackPanelNode());
-            }
-        }
-
-        public void MoveBefore(TilingNode node, TilingNode nodeBefore)
-        {
-            MoveTo(node, nodeBefore, beforeAnchor: true);
-        }
-
-        public void MoveAfter(TilingNode node, TilingNode nodeAfter)
-        {
-            MoveTo(node, nodeAfter, beforeAnchor: false);
-        }
-
-        private void MoveTo(TilingNode node, TilingNode nodeAnchor, bool beforeAnchor)
-        {
-            if (node.Parent == null)
-                throw new ArgumentException($"Node cannot be a top-level node!", nameof(node));
-
-            if (node.Desktop == null)
-                throw new ArgumentException($"Node must be registered with the backend!", nameof(node));
-
-            if (nodeAnchor.Parent == null)
-                throw new ArgumentException($"Node cannot be a top-level node!", nameof(nodeAnchor));
-
-            if (nodeAnchor.Desktop == null)
-                throw new ArgumentException($"Node must be registered with the backend!", nameof(nodeAnchor));
-
-            if (node.Parent == nodeAnchor.Parent)
-                throw new ArgumentException($"Nodes must have different parents!", nameof(nodeAnchor));
-
-            var destination = nodeAnchor.Parent;
-            var index = destination.IndexOf(nodeAnchor);
-            var oldParent = node.Parent;
-            oldParent.Detach(node);
-            destination.Attach(beforeAnchor ? index : index + 1, node);
-            if (tabsOnly && oldParent is StackPanelNode)
-            {
-                if (oldParent.Children.Count == 0)
-                    RemoveEmptyGroup(oldParent);
-            }
-            else
-            {
-                oldParent.Cleanup(collapse: AutoCollapse);
-            }
-        }
-
-        private bool MoveNodeTest(TilingNode node, PanelNode newParentNode, Point pt)
-        {
-            Debug.Assert(node.Desktop != null);
-            Debug.Assert(node.Parent != null);
-            Debug.Assert(newParentNode.Desktop != null);
-            Debug.Assert(newParentNode.Desktop != null);
-            Debug.Assert(node.Desktop == newParentNode.Desktop);
-
-            var rootClone = (PanelNode)node.Desktop.Root!.Clone();
-
-            var nodeClone = rootClone.Nodes.First(x => x.GenerationID == node.GenerationID);
-            var newParentClone = (PanelNode)rootClone.Nodes.First(x => x.GenerationID == newParentNode.GenerationID);
-            var testTree = new DesktopTree
-            {
-                Root = rootClone,
-                WorkArea = node.Desktop.WorkArea,
-            };
-
-            var nodeCloneParent = nodeClone.Parent!;
-            var newParentIsAncestor = nodeCloneParent.Ancestors.Contains(newParentClone);
-
-            nodeCloneParent.Detach(nodeClone);
-            nodeCloneParent.Cleanup(collapse: AutoCollapse);
-
-            if (newParentClone.Desktop == null && newParentIsAncestor)
-            {
-                // The new parent node got completely detached because it was an ancestor
-                // of the existing node and apparently it was a change of 1-child panels.
-                return true;
-            }
-
-            newParentClone.Attach(nodeClone);
-            testTree.Measure();
-            testTree.Arrange();
-
-            return newParentClone.ComputedRectangle.Contains(pt);
-        }
-
-        private static Rectangle TransferSize(Rectangle a, Rectangle b)
-        {
-            var newCenter = b.Center;
-            var width = a.Width;
-            var height = a.Height;
-
-            return new Rectangle(newCenter.X - width / 2, newCenter.Y - height / 2, newCenter.X + width / 2, newCenter.Y + height / 2);
-        }
-
-        public void MoveWindow(IWindow window, Point pt, bool allowNesting)
-        {
-            var state = m_states.FindByTree(window) ?? throw new ArgumentException($"Window must be registered with the backend!", nameof(window));
-            var sourceNode = state.DesktopTree.FindNode(window) ?? throw new ArgumentException($"Window must be registered with the backend!", nameof(window));
-            MoveNode(sourceNode, pt, allowNesting);
         }
 
         public void ResizeNode(TilingNode node, Rectangle newPosition, Rectangle oldPosition)
@@ -1405,71 +1008,6 @@ namespace wintabs
             Debug.Assert(node != null);
 
             SetFocus(node);
-        }
-
-        public void SwapPanels(PanelNode panel, PanelNode newPanel)
-        {
-            if (panel.Parent == null)
-                throw new TilingFailedException(TilingError.ModifiesTopLevelPanel);
-
-            var grandparent = panel.Parent;
-
-            grandparent.Attach(newPanel);
-            panel.Swap(newPanel);
-
-            var children = new List<TilingNode>(panel.Children);
-            foreach (var node in children)
-            {
-                panel.Detach(node);
-                newPanel.Attach(node);
-            }
-
-            panel.Cleanup(collapse: AutoCollapse);
-        }
-
-        bool CanFit(PanelNode parent, TilingNode child)
-        {
-            if (child.PathToRoot.Contains(parent))
-            {
-                try
-                {
-                    _ = MoveNodeTest(child, parent, new Point());
-                    return true;
-                }
-                catch (UnsatisfiableFlexConstraintsException)
-                {
-                    return false;
-                }
-#if !DEBUG
-                catch (Exception)
-                {
-                    return false;
-                }
-#endif
-            }
-            else
-            {
-                return CanFitLossy(parent, child);
-            }
-        }
-
-        public void PullUp(TilingNode node)
-        {
-            if (node.Parent == null)
-                throw new TilingFailedException(TilingError.InvalidTarget);
-
-            if (node.Parent.Parent == null)
-                throw new TilingFailedException(TilingError.PullsBeyondTopLevelPanel);
-
-            // First grandparent that we can fit in
-            var grandparent = node.Parent.PathToRoot.Skip(1).OfType<PanelNode>().FirstOrDefault(x => CanFit(x, node)) ?? throw new TilingFailedException(TilingError.TargetCannotFit);
-            var oldParent = node.Parent;
-            var index = grandparent.IndexOf(node.Parent);
-
-            node.Parent.Detach(node);
-            grandparent.Attach(index, node);
-
-            oldParent.Cleanup(collapse: AutoCollapse);
         }
     }
 }

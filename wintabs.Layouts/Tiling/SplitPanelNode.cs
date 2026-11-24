@@ -17,9 +17,9 @@ namespace wintabs.Layouts.Tiling
 
         public PanelOrientation Orientation { get; set; }
 
-        private List<TilingNode> m_children = [];
+        private readonly List<TilingNode> m_children = [];
 
-        private Flex m_constraints;
+        private readonly Flex m_constraints;
 
         public SplitPanelNode()
         {
@@ -162,17 +162,6 @@ namespace wintabs.Layouts.Tiling
             return Orientation == orientation;
         }
 
-        public override bool ResizeTo(TilingNode node, double newLength, GrowDirection direction)
-        {
-            if (Children.Count == 1)
-            {
-                return false;
-            }
-
-            int index = m_children.IndexOf(node);
-            return ResizeBy(node, newLength - m_constraints[index].Width, direction);
-        }
-
         public override bool ResizeBy(TilingNode node, double delta, GrowDirection direction)
         {
             if (Children.Count == 1)
@@ -202,52 +191,6 @@ namespace wintabs.Layouts.Tiling
         internal override void SetReference(int index, TilingNode node)
         {
             m_children[index] = node;
-        }
-
-        public override object Clone()
-        {
-            var copy = (SplitPanelNode)base.Clone();
-            copy.m_children = m_children.Select(x => (TilingNode)x.Clone()).ToList();
-            foreach (var child in copy.m_children)
-            {
-                child.Parent = copy;
-            }
-            copy.m_constraints = new Flex(m_constraints);
-            return copy;
-        }
-
-        public override Point GetMaxChildSize(TilingNode node)
-        {
-            if (!Children.Contains(node))
-            {
-                throw new InvalidOperationException($"Node {node} is not a child of {this}");
-            }
-
-            var maxReclaim = (int)(m_constraints.ContainerWidth - m_constraints.MinWidth);
-            if (Orientation == PanelOrientation.Horizontal)
-            {
-                return new Point(node.ComputedRectangle.Width + maxReclaim, node.ComputedRectangle.Height);
-            }
-            return new Point(node.ComputedRectangle.Width, node.ComputedRectangle.Height + maxReclaim);
-        }
-
-        public override Point GetMaxSizeForInsert(TilingNode node)
-        {
-            var spacing = node is WindowNode ? Spacing : 0;
-            var contentRectangle = new Rectangle(
-                ComputedRectangle.Left + Padding.Left + spacing / 2,
-                ComputedRectangle.Top + Padding.Top + spacing / 2,
-                ComputedRectangle.Right - Padding.Right - spacing / 2,
-                ComputedRectangle.Bottom - Padding.Bottom - spacing / 2);
-
-            if (Orientation == PanelOrientation.Horizontal)
-            {
-                return new Point(contentRectangle.Width - (int)m_constraints.MinWidth, contentRectangle.Height);
-            }
-            else
-            {
-                return new Point(contentRectangle.Width, contentRectangle.Height - (int)m_constraints.MinWidth);
-            }
         }
 
         public override void Move(int fromIndex, int toIndex)

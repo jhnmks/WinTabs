@@ -1,10 +1,7 @@
 ﻿using System.Windows.Input;
-using System.Windows.Media;
-using wintabs.Utilities;
 
 using WinMan;
 using wintabs.Layouts.Tiling;
-using System.Windows.Media.Imaging;
 
 namespace wintabs.ViewModels
 {
@@ -17,8 +14,6 @@ namespace wintabs.ViewModels
         private Rectangle m_windowBounds;
         private ICommand? m_primaryActionCommand;
         private ICommand? m_closeActionCommand;
-
-        public ImageSource? Icon => GetCachedImageSource();
 
         public TilingOverlayViewModel? Overlay { get => m_overlay; set => SetField(ref m_overlay, value); }
         public TilingNode? Node { get => m_node; set => SetField(ref m_node, value); }
@@ -55,14 +50,6 @@ namespace wintabs.ViewModels
             UnpackCommand = null;
         }
 
-        private BitmapSource? GetCachedImageSource()
-        {
-            if (m_node is not WindowNode windowNode)
-                return null;
-
-            var window = windowNode.WindowReference;
-            return window.GetCachedIcon();
-        }
     }
 
 }

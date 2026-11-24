@@ -13,7 +13,7 @@ namespace wintabs.Layouts.Tiling
         public override IReadOnlyList<TilingNode> Children => m_children;
 
 
-        private List<TilingNode> m_children = [];
+        private readonly List<TilingNode> m_children = [];
         private TilingNode? m_selected;
         private WindowNode? m_ungroupedSelected;
 
@@ -38,10 +38,7 @@ namespace wintabs.Layouts.Tiling
         /// Label shown on the group's badge, shared across displays.
         /// Groups without tabs have no number (0).
         /// </summary>
-        public int GroupNumber => m_cloneNumber ?? GroupNumbers.Get(this);
-
-        // Clones (used for layout previews) show the original's number without claiming one.
-        private int? m_cloneNumber;
+        public int GroupNumber => GroupNumbers.Get(this);
 
         /// <summary>The tab shown in this row: a window, or a container.</summary>
         public TilingNode? SelectedChild => m_selected?.Parent == this ? m_selected : m_children.FirstOrDefault();
@@ -113,40 +110,8 @@ namespace wintabs.Layouts.Tiling
             m_children[index] = node;
         }
 
-        public override object Clone()
-        {
-            var copy = (StackPanelNode)base.Clone();
-            copy.m_cloneNumber = GroupNumber;
-            copy.m_children = m_children.Select(x => (TilingNode)x.Clone()).ToList();
-            copy.m_selected = m_selected != null ? copy.m_children
-                .FirstOrDefault(tab => tab.GenerationID == m_selected.GenerationID) : null;
-            copy.m_ungroupedSelected = copy.m_children.OfType<WindowNode>()
-                .FirstOrDefault(tab => tab.GenerationID == m_ungroupedSelected?.GenerationID);
-            foreach (var child in copy.m_children)
-            {
-                child.Parent = copy;
-            }
-            return copy;
-        }
-
-        public override Point GetMaxChildSize(TilingNode node)
-        {
-            if (!Children.Contains(node))
-            {
-                throw new InvalidOperationException($"Node {node} is not a child of {this}");
-            }
-
-            return GetMaxSizeForInsert(node);
-        }
-
-        public override Point GetMaxSizeForInsert(TilingNode node)
-        {
-            if (node is WindowNode)
-            {
-                return new Point(ComputedRectangle.Width - Spacing, ComputedRectangle.Height - Spacing - (HasContainers ? Padding.Top : 0));
-            }
-            return ComputedRectangle.Size;
-        }
+        public Point GetAvailableTabSize() =>
+            new(ComputedRectangle.Width - Spacing, ComputedRectangle.Height - Spacing - (HasContainers ? Padding.Top : 0));
 
         internal override void MeasureCore()
         {

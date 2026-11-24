@@ -19,8 +19,6 @@ namespace wintabs
 {
     class MultiDisplayTilingService : ITilingService, IDisposable
     {
-        public event EventHandler<TilingFailedEventArgs>? PlacementFailed;
-
         public Dispatcher Dispatcher { get; }
         public IWorkspace Workspace { get; }
 
@@ -77,7 +75,6 @@ namespace wintabs
 
         private void ConfigureDisplayService(TilingService tiling)
         {
-            tiling.PlacementFailed += OnTilingFailed;
             tiling.ExternalGroupDrag = OnExternalGroupDrag;
             tiling.ExternalTabDrag = OnExternalTabDrag;
             tiling.ClearExternalDropPreview = ClearExternalGroupPreview;
@@ -251,11 +248,6 @@ namespace wintabs
             }
         }
 
-
-        private void OnTilingFailed(object? sender, TilingFailedEventArgs e)
-        {
-            PlacementFailed?.Invoke(this, e);
-        }
 
         public void Dispose()
         {

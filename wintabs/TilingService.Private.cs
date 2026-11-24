@@ -268,15 +268,6 @@ namespace wintabs
             UpdateLayoutSpacing();
         }
 
-        private void OnPlacementFailed(object? sender, TilingFailedEventArgs e)
-        {
-            if (e.FailReason == TilingError.NoValidPlacementExists && e.FailSource != null)
-            {
-                m_floating.Add(e.FailSource, FloatReason.DoesNotFit);
-                OnWindowFloated(e.FailSource);
-            }
-        }
-
         private void OnWindowFloated(IWindow window)
         {
             Rectangle? originalPosition;
@@ -344,10 +335,9 @@ namespace wintabs
         private void OnDesktopAdded(object? sender, DesktopChangedEventArgs e)
         {
             m_logger.Information("Desktop {Desktop} added to workspace", e.Source);
-            var orientation = m_display.Bounds.Width >= m_display.Bounds.Height ? PanelOrientation.Horizontal : PanelOrientation.Vertical;
             using (m_backendLock.EnterScope())
             {
-                m_backend.RegisterDesktop(e.Source, GetLayoutWorkArea(), orientation);
+                m_backend.RegisterDesktop(e.Source, GetLayoutWorkArea());
                 var tree = m_backend.GetTree(e.Source)!;
                 tree.GroupNumberLane = m_groupNumberLane;
                 tree.GroupNumberStride = m_groupNumberStride;
@@ -460,23 +450,15 @@ namespace wintabs
                     {
                         try
                         {
-                            try
+                            using (m_backendLock.EnterScope())
                             {
-                                using (m_backendLock.EnterScope())
+                                if (m_workspacePaused || m_backend.HasWindow(e.Source) ||
+                                    e.Source.State != WindowState.Restored || !CanManage(e.Source))
                                 {
-                                    if (m_workspacePaused || m_backend.HasWindow(e.Source) ||
-                                        e.Source.State != WindowState.Restored || !CanManage(e.Source))
-                                    {
-                                        return;
-                                    }
-
-                                    RegisterTab(e.Source);
+                                    return;
                                 }
-                            }
-                            catch (NoValidPlacementExistsException)
-                            {
-                                PlacementFailed?.Invoke(this, new TilingFailedEventArgs(
-                                    TilingError.NoValidPlacementExists, e.Source));
+
+                                RegisterTab(e.Source);
                             }
                         }
                         catch
@@ -1386,31 +1368,23 @@ namespace wintabs
                         return false;
                     }
 
-                    try
+                    using (m_backendLock.EnterScope())
                     {
-                        using (m_backendLock.EnterScope())
+                        try
                         {
-                            try
+                            if (!m_backend.HasWindow(window))
                             {
-                                if (!m_backend.HasWindow(window))
-                                {
-                                    m_logger.Debug("Window {Window} can be managed, but is not registered with backend, registering now", window.DebugString());
-                                    RegisterTab(window);
-                                    InvalidateLayout();
-                                    return true;
-                                }
-                            }
-                            catch (InvalidWindowReferenceException)
-                            {
-                                if (m_backend.HasWindow(window))
-                                    m_backend.UnregisterWindow(window);
+                                m_logger.Debug("Window {Window} can be managed, but is not registered with backend, registering now", window.DebugString());
+                                RegisterTab(window);
+                                InvalidateLayout();
+                                return true;
                             }
                         }
-                    }
-                    catch (NoValidPlacementExistsException)
-                    {
-                        PlacementFailed?.Invoke(this, new TilingFailedEventArgs(
-                            TilingError.NoValidPlacementExists, window));
+                        catch (InvalidWindowReferenceException)
+                        {
+                            if (m_backend.HasWindow(window))
+                                m_backend.UnregisterWindow(window);
+                        }
                     }
                 }
                 else

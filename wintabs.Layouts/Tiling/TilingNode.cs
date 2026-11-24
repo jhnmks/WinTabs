@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 
 using WinMan;
 
@@ -14,12 +13,8 @@ namespace wintabs.Layouts.Tiling
         Window,
     }
 
-    public abstract class TilingNode : ICloneable
+    public abstract class TilingNode
     {
-        private static long s_generationId = 0;
-
-        public long GenerationID { get; } = Interlocked.Increment(ref s_generationId);
-
         public DesktopTree? Desktop
         {
             get
@@ -117,21 +112,6 @@ namespace wintabs.Layouts.Tiling
             DesktopTree.SwapReferences(this, otherNode);
         }
 
-        public void Remove(bool cleanup = false, bool collapse = false)
-        {
-            if (Desktop == null)
-            {
-                throw new InvalidOperationException($"Node is not attached to Desktop!");
-            }
-
-            var oldParent = Parent!;
-            oldParent.Detach(this);
-            if (cleanup)
-            {
-                oldParent.Cleanup(collapse);
-            }
-        }
-
         private TilingNode? FindAdjacentY(int direction)
         {
             if (Parent is SplitPanelNode sp && sp.Orientation == PanelOrientation.Vertical)
@@ -174,19 +154,6 @@ namespace wintabs.Layouts.Tiling
             };
         }
 
-        public WindowNode? GetAdjacentWindow(TilingDirection direction)
-        {
-            var adjacentNode = GetAdjacentNode(direction);
-            if (direction == TilingDirection.Left || direction == TilingDirection.Up)
-            {
-                return adjacentNode?.Windows?.LastOrDefault();
-            }
-            else
-            {
-                return adjacentNode?.Windows?.FirstOrDefault();
-            }
-        }
-
         public void Embed(PanelNode panel)
         {
             if (Parent == null)
@@ -198,14 +165,6 @@ namespace wintabs.Layouts.Tiling
             originalParent.ReplaceReference(originalIndex, panel);
             panel.Attach(this);
         }
-
-        public virtual object Clone()
-        {
-            var copy = (TilingNode)MemberwiseClone();
-            copy.Parent = null;
-            return copy;
-        }
-
 
         public void Measure()
         {

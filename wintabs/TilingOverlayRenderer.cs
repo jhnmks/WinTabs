@@ -42,18 +42,6 @@ namespace wintabs
             }
         }
 
-        public IWindow? IntentSourceWindow
-        {
-            get => m_intentSourceWindow;
-            set
-            {
-                if (m_intentSourceWindow != value)
-                {
-                    m_intentSourceWindow = value;
-                }
-            }
-        }
-
         internal event Action<WindowNode>? WrapInContainerRequested;
         internal event Action<WindowNode, StackPanelNode>? MoveToContainerRequested;
         internal event Action<StackPanelNode>? RenameContainerRequested;
@@ -77,7 +65,6 @@ namespace wintabs
         private readonly Dictionary<TilingNode, TilingNodeViewModel> m_nodeViewModels = [];
         private string? m_focusBorderColor;
         private Rectangle? m_previewRectangle;
-        private IWindow? m_intentSourceWindow;
 
         public TilingOverlayRenderer(IDisplay display, Func<IntPtr> overlayAnchorSource)
         {
@@ -401,7 +388,6 @@ namespace wintabs
             vm.Overlay = m_viewModel;
             vm.Node = node;
             vm.HasFocus = focusedPath.Contains(node);
-            vm.ChildHasDirectFocus = node.Children.Contains(focusedPath.FirstOrDefault());
             vm.GroupNumber = node is StackPanelNode group ? group.GroupNumber : 0;
             vm.ComputedBounds = AdjustForDisplay(node.ComputedRectangle);
             vm.PrimaryActionCommand = m_panelItemPrimaryActionCommand;

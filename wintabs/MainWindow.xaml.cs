@@ -120,7 +120,6 @@ namespace wintabs
                         m_tiling = new TilingService(m_workspace, m_workspace.DisplayManager.PrimaryDisplay, settings, m_floating, true);
                     }
 
-                    m_tiling.PlacementFailed += OnTilingFailed;
                     if (m_sessionLocked || m_suspended || m_resumeLayoutTimer?.IsEnabled == true)
                         m_tiling.SetWorkspacePaused(true);
                     m_tiling.Start();
@@ -293,33 +292,6 @@ namespace wintabs
             Dispatcher.RethrowOnDispatcher((Exception)e.ExceptionObject!);
         }
 
-        private void OnTilingFailed(object? sender, TilingFailedEventArgs e)
-        {
-            if (e.FailReason == TilingError.NoValidPlacementExists)
-            {
-                if (e.FailSource == null)
-                {
-                    throw new ArgumentException($"{nameof(e.FailSource)} is required for {nameof(e.FailReason)}!");
-                }
-
-                PlayBeepSound();
-                _ = ShowToastAsync($"Floating mode enabled for {e.FailSource.Title}", "The window cannot be resized to fit!", ToastDurationLong);
-            }
-            else
-            {
-                var reason = GetTilingErrorText(e.FailReason) ?? "Operation failed!";
-                var hint = e.FailSource != null
-                    ? e.FailSource.GetCachedProcessName() + " window"
-                    : null;
-
-                if (e.FailReason != TilingError.TargetCannotFit)
-                {
-                    PlayBeepSound();
-                }
-                _ = ShowToastAsync(reason, hint, ToastDurationLong);
-            }
-        }
-
         private async Task HandleCommandExceptionAsync(TilingFailedException e, string? friendlyActionName)
         {
             var messageText = friendlyActionName != null
@@ -409,16 +381,9 @@ namespace wintabs
         {
             return e switch
             {
-                TilingError.NoValidPlacementExists => "No valid placement exists!",
-                TilingError.CausesRecursiveNesting => "Cannot nest panel inside itself!",
-                TilingError.ModifiesTopLevelPanel => "Cannot modify the top-level panel!",
-                TilingError.PullsBeyondTopLevelPanel => "Cannot move up any further!",
                 TilingError.MissingAdjacentWindow => "No adjacent window!",
                 TilingError.MissingTarget => "No focused window!",
-                TilingError.TargetCannotFit => "Cannot fit in the target panel!",
-                TilingError.InvalidTarget => "The target panel does not support this operation!",
                 TilingError.NoGroupInDirection => "There is no group in that direction in this row.",
-                TilingError.NestingInStackPanel => "Stack panel cannot contain other panels!",
                 _ => null,
             };
         }
