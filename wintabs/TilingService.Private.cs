@@ -1276,8 +1276,11 @@ namespace wintabs
             InvalidateLayout();
         }
 
-        private void OnTilingNodeFocusRequested(object? sender, TilingNode e)
+        private async void OnTilingNodeFocusRequested(object? sender, TilingNode e)
         {
+            if (!Active || m_workspacePaused)
+                return;
+
             WindowNode? windowNode;
             using (m_backendLock.EnterScope())
             {
@@ -1290,7 +1293,20 @@ namespace wintabs
 
             try
             {
-                FocusHelper.ForceActivate(windowNode.WindowReference.Handle);
+                var window = windowNode.WindowReference;
+                bool activated = await FocusHelper.ActivateTabAsync(window.Handle, () =>
+                {
+                    if (!Active || m_workspacePaused)
+                        return false;
+                    using (m_backendLock.EnterScope())
+                    {
+                        var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+                        return windowNode.Desktop != null && windowNode.Desktop == m_backend.GetTree(desktop) &&
+                            ReferenceEquals(m_backend.GetFocus(desktop), windowNode);
+                    }
+                });
+                if (!activated)
+                    m_logger.Debug("Could not activate tab for window {Window}", window.DebugString());
             }
             catch (InvalidWindowReferenceException)
             {
