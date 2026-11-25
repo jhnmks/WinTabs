@@ -29,12 +29,26 @@ namespace wintabs.Layouts.Tiling
                         m_wnd2Node.Add(window.WindowReference, window);
                     }
                 }
+                GroupNumbers.Publish(this);
             }
         }
 
         public Rectangle WorkArea { get; set; }
-        public int GroupNumberLane { get; set; }
-        public int GroupNumberStride { get; set; } = 2;
+        private int m_groupNumberLane;
+        private int m_groupNumberStride = 2;
+        public int GroupNumberLane
+        {
+            get => m_groupNumberLane;
+            set => SetGroupNumberSequence(value, m_groupNumberStride);
+        }
+        public int GroupNumberStride => m_groupNumberStride;
+
+        public void SetGroupNumberSequence(int lane, int stride)
+        {
+            m_groupNumberLane = lane;
+            m_groupNumberStride = stride;
+            GroupNumbers.Publish(this);
+        }
 
         private PanelNode? m_root;
         private Dictionary<IWindow, WindowNode> m_wnd2Node = [];
@@ -68,6 +82,8 @@ namespace wintabs.Layouts.Tiling
 
         public static void SwapReferences(TilingNode nodeA, TilingNode nodeB)
         {
+            var treeA = nodeA.Desktop;
+            var treeB = nodeB.Desktop;
             var parentA = nodeA.Parent ?? throw new InvalidOperationException($"Parent of {nameof(nodeA)} is null!");
             var indexA = parentA.IndexOf(nodeA);
 
@@ -81,6 +97,8 @@ namespace wintabs.Layouts.Tiling
             nodeB.Parent = parentA;
             parentB.SetReference(indexB, nodeA);
             nodeA.Parent = parentB;
+            if (treeA != null) GroupNumbers.Publish(treeA);
+            if (treeB != null && treeB != treeA) GroupNumbers.Publish(treeB);
         }
 
         internal void Register(WindowNode window)

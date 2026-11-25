@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -611,6 +611,14 @@ namespace WinMan.Windows
                 return;
             }
 
+            // Focus can move to an embedded control (OBJID_CLIENT or a child ID). Resolve the current
+            // foreground root rather than treating the event's child HWND as a separately managed window.
+            if (eventType == EVENT_SYSTEM_FOREGROUND || eventType == EVENT_OBJECT_FOCUS)
+            {
+                ScheduleAction(ref m_checkForegroundWindowQueued, CheckForegroundWindow);
+                return;
+            }
+
             if (idObject != OBJID_WINDOW || idChild != 0)
             {
                 return;
@@ -682,11 +690,6 @@ namespace WinMan.Windows
                         }
                     }
                     m_processingLoop.InvokeAsync(OnMoveSizeEnd);
-                    break;
-
-                case EVENT_SYSTEM_FOREGROUND:
-                    break;
-                case EVENT_OBJECT_FOCUS:
                     break;
 
                 case EVENT_OBJECT_LOCATIONCHANGE:
@@ -903,22 +906,17 @@ namespace WinMan.Windows
 
         private void OnWindowForeground(IntPtr hwnd)
         {
-            if (m_hwndFocused == hwnd)
-            {
-                return;
-            }
-
             Win32WindowHandle? backgrounded;
             Win32WindowHandle? foregrounded;
             lock (m_windowSet)
             {
-                m_windowSet.TryGetValue(m_hwndFocused, out backgrounded);
                 m_windowSet.TryGetValue(hwnd, out foregrounded);
+                var resolved = foregrounded?.WindowObject?.Handle ?? default;
+                if (m_hwndFocused == resolved)
+                    return;
+                m_windowSet.TryGetValue(m_hwndFocused, out backgrounded);
+                m_hwndFocused = resolved;
             }
-
-            var backgroundedHwnd = m_hwndFocused;
-            // Only set m_hwndFocused if WindowObject exists.
-            m_hwndFocused = foregrounded?.WindowObject?.Handle ?? default;
 
             try
             {

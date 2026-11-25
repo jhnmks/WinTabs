@@ -154,12 +154,12 @@ namespace wintabs.Windows
             MoreMenu.IsOpen = true;
         }
 
-        private void OnAlwaysFloatClick(object sender, RoutedEventArgs e)
+        private async void OnAlwaysFloatClick(object sender, RoutedEventArgs e)
         {
             if (m_target is IWindow window)
             {
                 HideBar();
-                _ = FloatingWindows.SetAlwaysFloatingAsync(window.GetCachedProcessName(), !m_floating.IsAlwaysFloating(window));
+                await m_floating.ToggleAlwaysFloatingAsync(window);
             }
         }
 

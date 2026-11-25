@@ -30,11 +30,9 @@ namespace wintabs.Utilities
         /// False once the window has been re-parented into another window (for example a
         /// viewer embedded by a connection manager). Such windows must not get their own tab.
         /// </summary>
-        public static bool IsTopLevelWindow(this IWindow window)
-        {
-            var root = GetAncestor(window.Handle, GA_ROOT);
-            return root == window.Handle;
-        }
+        public static bool IsTopLevelWindow(this IWindow window) => GetRootWindow(window.Handle) == window.Handle;
+
+        internal static IntPtr GetRootWindow(IntPtr hwnd) => hwnd == IntPtr.Zero ? hwnd : GetAncestor(hwnd, GA_ROOT);
 
         public static string GetCachedProcessName(this IWindow window)
         {

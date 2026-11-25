@@ -57,14 +57,31 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "{app}\wintabs.exe"; Description: "Start WinTabs now"; Flags: nowait postinstall
 
-[UninstallRun]
-Filename: "{sys}\taskkill.exe"; Parameters: "/f /im wintabs.exe"; Flags: runhidden; RunOnceId: "StopWinTabs"
-
 [Code]
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+function InitializeUninstall(): Boolean;
+var
+  ExitCode: Integer;
+  Executable: String;
 begin
-  // Also when autostart was switched on later from the app's Settings.
-  if CurUninstallStep = usUninstall then
+  Executable := ExpandConstant('{app}\wintabs.exe');
+  Result := True;
+  if not FileExists(Executable) then
+    Exit;
+  if not Exec(Executable, '--stop-installed-copy', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    ExitCode := 1;
+  Result := ExitCode = 0;
+  if not Result then
+    SuppressibleMsgBox('Quit the installed copy of WinTabs from its tray icon, then run the uninstaller again.', mbError, MB_OK, IDOK);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  StartupCommand: String;
+begin
+  // Leave startup entries for other copies of WinTabs alone.
+  if (CurUninstallStep = usUninstall) and
+     RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'wintabs', StartupCommand) and
+     (CompareText(StartupCommand, ExpandConstant('"{app}\wintabs.exe"')) = 0) then
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'wintabs');
   // Settings and logs live in %AppData%\wintabs; ask before deleting them.
   if (CurUninstallStep = usPostUninstall) and DirExists(ExpandConstant('{userappdata}\wintabs')) then

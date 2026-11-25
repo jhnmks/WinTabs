@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -326,10 +326,10 @@ namespace wintabs
             m_floating.Add(e.WindowReference, FloatReason.Manual);
         }
 
-        private void OnAlwaysFloatRequested(object? sender, WindowNode e)
+        private async void OnAlwaysFloatRequested(object? sender, WindowNode e)
         {
             var window = e.WindowReference;
-            _ = FloatingWindows.SetAlwaysFloatingAsync(window.GetCachedProcessName(), !m_floating.IsAlwaysFloating(window));
+            await m_floating.ToggleAlwaysFloatingAsync(window);
         }
 
         private void OnDesktopAdded(object? sender, DesktopChangedEventArgs e)
@@ -339,8 +339,7 @@ namespace wintabs
             {
                 m_backend.RegisterDesktop(e.Source, GetLayoutWorkArea());
                 var tree = m_backend.GetTree(e.Source)!;
-                tree.GroupNumberLane = m_groupNumberLane;
-                tree.GroupNumberStride = m_groupNumberStride;
+                tree.SetGroupNumberSequence(m_groupNumberLane, m_groupNumberStride);
             }
         }
 
@@ -365,7 +364,8 @@ namespace wintabs
         {
             m_dispatcher.BeginInvoke(() =>
             {
-                if (!Active || m_workspacePaused || !Equals(m_workspace.FocusedWindow, e.Source))
+                if (!Active || m_workspacePaused || !Equals(m_workspace.FocusedWindow, e.Source) ||
+                    FocusHelper.ForegroundRoot() != e.Source.Handle)
                     return;
 
                 m_logger.Debug("Got focus on {Window}", e.Source.DebugString());
@@ -537,12 +537,21 @@ namespace wintabs
         {
             if (!Active || m_workspacePaused)
                 return;
+            WindowNode? focus = null;
             using (m_backendLock.EnterScope())
             {
-                if (!m_backend.MoveTabToContainer(tab, container))
+                SyncFocusToForeground();
+                var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+                bool wasFocused = ReferenceEquals(m_backend.GetFocus(desktop), tab);
+                if (!m_backend.MoveTabToContainer(tab, container, keepSourceFocus: true))
                     return;
+                if (wasFocused)
+                    focus = m_backend.GetFocus(desktop) as WindowNode;
             }
-            OnTilingNodeFocusRequested(this, tab);
+            if (focus != null)
+                OnTilingNodeFocusRequested(this, focus);
+            else
+                InvalidateLayout();
         }
 
         private void OnRenameContainerRequested(StackPanelNode container) =>
@@ -943,6 +952,7 @@ namespace wintabs
                 return false;
 
             WindowNode? moved;
+            WindowNode? sourceFocus;
             var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
             using (m_backendLock.EnterScope())
             using (destination.m_backendLock.EnterScope())
@@ -951,13 +961,17 @@ namespace wintabs
                 if (destination.m_backend.FindGroup(desktop, groupNumber) is not StackPanelNode target)
                     return false;
                 moved = m_backend.TransferFocusedTab(desktop, destination.m_backend, target);
+                sourceFocus = m_backend.GetFocus(desktop) as WindowNode;
             }
             if (moved == null)
                 return false;
 
             InvalidateLayout();
             destination.InvalidateLayout();
-            destination.OnTilingNodeFocusRequested(this, moved);
+            if (sourceFocus != null)
+                OnTilingNodeFocusRequested(this, sourceFocus);
+            else
+                destination.OnTilingNodeFocusRequested(this, moved);
             return true;
         }
 
@@ -1294,7 +1308,7 @@ namespace wintabs
             try
             {
                 var window = windowNode.WindowReference;
-                bool activated = await FocusHelper.ActivateTabAsync(window.Handle, () =>
+                var result = await FocusHelper.ActivateTabAsync(window.Handle, () =>
                 {
                     if (!Active || m_workspacePaused)
                         return false;
@@ -1305,8 +1319,14 @@ namespace wintabs
                             ReferenceEquals(m_backend.GetFocus(desktop), windowNode);
                     }
                 });
-                if (!activated)
-                    m_logger.Debug("Could not activate tab for window {Window}", window.DebugString());
+                if (result == FocusHelper.ActivationResult.Refused)
+                {
+                    m_lastShortcutFocus = -ShortcutFocusGraceMs;
+                    using (m_backendLock.EnterScope())
+                        SyncFocusToForeground();
+                    m_logger.Warning("Tab activation not confirmed for {Window}; foreground root is {Foreground:X}",
+                        window.DebugString(), FocusHelper.ForegroundRoot().ToInt64());
+                }
             }
             catch (InvalidWindowReferenceException)
             {

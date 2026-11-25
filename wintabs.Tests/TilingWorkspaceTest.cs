@@ -499,12 +499,14 @@ namespace wintabs.Tests
             Assert.IsTrue(workspace.MoveFocusedTabToGroup(desktop, second.GroupNumber));
             Assert.AreSame(second, a.Parent);
             Assert.AreSame(a, second.Children[^1]);
+            Assert.AreSame(b, workspace.GetFocus(desktop));
 
             // Within its own group: jumps to the end.
             workspace.SetFocus(c);
             Assert.IsTrue(workspace.MoveFocusedTabToGroup(desktop, second.GroupNumber));
             Assert.AreSame(c, second.Children[^1]);
-            Assert.IsFalse(workspace.MoveFocusedTabToGroup(desktop, second.GroupNumber));
+            Assert.IsTrue(workspace.MoveFocusedTabToGroup(desktop, second.GroupNumber));
+            Assert.AreSame(c, second.Children[^1]);
 
             // Unknown number: nothing happens.
             Assert.IsFalse(workspace.MoveFocusedTabToGroup(desktop, int.MaxValue));
@@ -543,6 +545,32 @@ namespace wintabs.Tests
             Assert.IsFalse(solo.SplitTab(only, TilingDirection.Right));
         }
 
+        [DataTestMethod]
+        [DataRow(0, 1)]
+        [DataRow(1, 0)]
+        [DataRow(2, 1)]
+        public void MovingATabToANamedGroupKeepsFocusOnItsSourceNeighbor(int movedIndex, int expectedIndex)
+        {
+            var desktop = m_desktopFactory.CreateVirtualDesktop();
+            var workspace = new TilingWorkspace();
+            workspace.RegisterDesktop(desktop, m_workarea);
+            var source = workspace.WrapInContainer(workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow()))!;
+            var outer = (StackPanelNode)source.Parent!;
+            var tabs = new[] { source.SelectedTab!,
+                workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow(), source),
+                workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow(), source) };
+            var resident = workspace.RegisterWindow(m_windowFactory.CreateExplorerWindow(), outer);
+            var target = workspace.WrapInContainer(resident)!;
+            workspace.GetTree(desktop)!.Arrange();
+            workspace.SetFocus(tabs[movedIndex]);
+
+            Assert.IsTrue(workspace.MoveTabToContainer(tabs[movedIndex], target, keepSourceFocus: true));
+            Assert.AreSame(target, tabs[movedIndex].Parent);
+            Assert.AreSame(tabs[expectedIndex], workspace.GetFocus(desktop));
+            Assert.AreSame(source, outer.SelectedChild);
+            Assert.AreSame(resident, target.SelectedTab);
+        }
+
         [TestMethod]
         public void TransferFocusedTabMovesItToAnotherDisplaysGroup()
         {
@@ -564,7 +592,8 @@ namespace wintabs.Tests
             Assert.IsTrue(left.HasWindow(staying.WindowReference));
             Assert.AreSame(target, moved!.Parent);
             Assert.AreSame(moved, target.Children[^1]);
-            Assert.AreSame(moved, right.GetFocus(desktop));
+            Assert.AreSame(staying, left.GetFocus(desktop));
+            Assert.IsNull(right.GetFocus(desktop));
 
             // Moving it again to where it already is does nothing and loses nothing.
             right.SetFocus(moved);
@@ -1073,6 +1102,35 @@ namespace wintabs.Tests
             right.GetTree(desktop)!.GroupNumberLane = 0;
             Assert.AreEqual(2, leftNested.GroupNumber);
             Assert.AreEqual(1, rightNested.GroupNumber);
+        }
+
+        [TestMethod]
+        public void GroupNumberReadsAreSafeWhileAnotherDisplayChangesItsLayout()
+        {
+            GroupNumbers.Reset();
+            var desktop = m_desktopFactory.CreateVirtualDesktop();
+            var fixedWorkspace = new TilingWorkspace();
+            var changingWorkspace = new TilingWorkspace();
+            fixedWorkspace.RegisterDesktop(desktop, m_workarea);
+            changingWorkspace.RegisterDesktop(desktop, m_workarea);
+            changingWorkspace.GetTree(desktop)!.SetGroupNumberSequence(1, 2);
+            var fixedGroup = (StackPanelNode)fixedWorkspace.RegisterWindow(m_windowFactory.CreateExplorerWindow()).Parent!;
+            var temporary = m_windowFactory.CreateExplorerWindow();
+
+            System.Threading.Tasks.Parallel.Invoke(
+                () =>
+                {
+                    for (int i = 0; i < 100; i++)
+                    {
+                        changingWorkspace.RegisterWindow(temporary);
+                        changingWorkspace.UnregisterWindow(temporary);
+                    }
+                },
+                () =>
+                {
+                    for (int i = 0; i < 100; i++)
+                        Assert.AreEqual(1, fixedGroup.GroupNumber);
+                });
         }
 
         [TestMethod]

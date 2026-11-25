@@ -50,10 +50,16 @@ namespace wintabs
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         }
 
+        private bool m_terminating;
+
         internal void Terminate()
         {
-            Close();
-            Shutdown();
+            if (m_terminating)
+                return;
+            m_terminating = true;
+            try { Close(); }
+            catch (Exception ex) { Logger.Error(ex, "WinTabs shutdown cleanup failed"); }
+            finally { Shutdown(); }
         }
 
         private async void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
@@ -171,28 +177,21 @@ namespace wintabs
             void CloseAppWindows()
             {
                 List<Exception> exceptions = [];
-                foreach (var window in Windows.Cast<Window>())
+                foreach (var window in Windows.Cast<Window>().ToArray())
                 {
                     try
                     {
-                        // Dispose and close window
                         if (window is IDisposable disposable)
-                        {
                             disposable.Dispose();
-                        }
-                        try
-                        {
-                            window.Close();
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // Already closing...
-                        }
                     }
                     catch (Exception e)
                     {
                         exceptions.Add(e);
                     }
+
+                    try { window.Close(); }
+                    catch (InvalidOperationException) { /* The owner may already have closed this window. */ }
+                    catch (Exception e) { exceptions.Add(e); }
                 }
                 if (exceptions.Count > 0)
                 {
@@ -200,19 +199,16 @@ namespace wintabs
                 }
             }
 
-            if (Dispatcher.Thread == Thread.CurrentThread)
+            try
             {
-                CloseAppWindows();
+                if (Dispatcher.CheckAccess())
+                    CloseAppWindows();
+                else
+                    Dispatcher.Invoke(CloseAppWindows, System.Windows.Threading.DispatcherPriority.Send);
             }
-            else
+            finally
             {
-                // Use highest priority to close
-                Dispatcher.Invoke(CloseAppWindows, System.Windows.Threading.DispatcherPriority.Send);
-            }
-
-            if (Services.GetRequiredService<LowLevelMouseHook>() is LowLevelMouseHook mshk)
-            {
-                mshk.Dispose();
+                Services.GetRequiredService<LowLevelMouseHook>().Dispose();
             }
         }
 

@@ -149,6 +149,20 @@ namespace wintabs
             });
         }
 
+        public async Task ToggleAlwaysFloatingAsync(IWindow window)
+        {
+            try
+            {
+                await SetAlwaysFloatingAsync(window.GetCachedProcessName(), !IsAlwaysFloating(window));
+            }
+            catch (Exception ex)
+            {
+                App.Current.Logger.Error(ex, "Could not save the floating rule");
+                System.Windows.MessageBox.Show("WinTabs couldn't save the floating rule. Check the log in Settings → General for details.",
+                    "WinTabs", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
+        }
+
         /// <summary>Adds the app to, or removes it from, the "always float" list in the settings.</summary>
         public static Task SetAlwaysFloatingAsync(string processName, bool alwaysFloat)
         {

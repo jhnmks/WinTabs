@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 
 namespace wintabs.Utilities
 {
@@ -19,7 +21,22 @@ namespace wintabs.Utilities
 
         public void Open()
         {
-            Process.Start("explorer.exe", $"/select, {m_fileName}");
+            var latest = FindLatest(m_fileName) ?? m_fileName;
+            Process.Start("explorer.exe", $"/select,\"{latest}\"");
+        }
+
+        internal static string? FindLatest(string basePath)
+        {
+            var name = Path.GetFileNameWithoutExtension(basePath);
+            var extension = Path.GetExtension(basePath);
+            return Directory.EnumerateFiles(Path.GetDirectoryName(basePath)!, name + "*" + extension)
+                .Where(path =>
+                {
+                    var stem = Path.GetFileNameWithoutExtension(path);
+                    return stem == name || (stem.StartsWith(name + "_", StringComparison.Ordinal) &&
+                        stem.AsSpan(name.Length + 1).Length > 0 && int.TryParse(stem.AsSpan(name.Length + 1), out _));
+                })
+                .MaxBy(File.GetLastWriteTimeUtc);
         }
     }
 }

@@ -342,9 +342,10 @@ namespace wintabs
                     case TabShortcut.MoveTabToGroup:
                         if (!m_tiling.MoveTabToGroup(command.GroupNumber))
                         {
-                            m_logger.Information("Ctrl+Shift+{Group}: no tab group {Group} to move the tab into", command.GroupNumber);
+                            m_logger.Information("Could not send the active tab to group {Group}", command.GroupNumber);
                             PlayBeepSound();
-                            await ShowToastAsync($"No tab group {command.GroupNumber}", "Use the number shown on the group's tab or badge.", ToastDurationLong);
+                            await ShowToastAsync($"Could not move the tab to group {command.GroupNumber}",
+                                "Select a tab and check the destination group's badge number and available space.", ToastDurationLong);
                         }
                         break;
                     case TabShortcut.TileTab:

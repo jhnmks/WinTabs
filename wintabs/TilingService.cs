@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Threading;
 
@@ -58,8 +58,7 @@ namespace wintabs
                 m_groupNumberStride = stride;
                 foreach (var tree in m_backend.Trees)
                 {
-                    tree.GroupNumberLane = lane;
-                    tree.GroupNumberStride = stride;
+                    tree.SetGroupNumberSequence(lane, stride);
                 }
             }
             InvalidateLayout();
@@ -253,11 +252,8 @@ namespace wintabs
                 SyncFocusToForeground();
                 tab = m_backend.GetCycledTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset)
                     ?? throw new TilingFailedException(TilingError.MissingAdjacentWindow);
-                SetShortcutFocus(tab);
             }
-
-            FocusHelper.ForceActivate(tab.WindowReference.Handle);
-            InvalidateLayout();
+            OnTilingNodeFocusRequested(this, tab);
         }
 
         public void CycleGroup(int offset)
@@ -271,10 +267,8 @@ namespace wintabs
                 tab = m_backend.GetCycledGroupTab(m_workspace.VirtualDesktopManager.CurrentDesktop, offset);
                 if (tab == null)
                     return;
-                SetShortcutFocus(tab);
             }
-            FocusHelper.ForceActivate(tab.WindowReference.Handle);
-            InvalidateLayout();
+            OnTilingNodeFocusRequested(this, tab);
         }
 
         public void CreateGroup()
@@ -344,14 +338,23 @@ namespace wintabs
 
         public bool MoveTabToGroup(int groupNumber)
         {
+            WindowNode? focus;
             using (m_backendLock.EnterScope())
             {
                 SyncFocusToForeground();
-                if (!m_backend.MoveFocusedTabToGroup(m_workspace.VirtualDesktopManager.CurrentDesktop, groupNumber))
+                var desktop = m_workspace.VirtualDesktopManager.CurrentDesktop;
+                var previous = m_backend.GetFocus(desktop);
+                if (!m_backend.MoveFocusedTabToGroup(desktop, groupNumber))
                     return false;
+                focus = m_backend.GetFocus(desktop) as WindowNode;
+                if (ReferenceEquals(previous, focus))
+                    focus = null;
             }
 
-            InvalidateLayout();
+            if (focus != null)
+                OnTilingNodeFocusRequested(this, focus);
+            else
+                InvalidateLayout();
             return true;
         }
 

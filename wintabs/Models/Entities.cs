@@ -44,36 +44,31 @@ namespace wintabs.Models
 
             async Task<T> readAsync()
             {
-                try
+                if (File.Exists(FullPath))
                 {
-                    if (!File.Exists(FullPath))
+                    try { return await ReadFileAsync(FullPath); }
+                    catch (Exception e) when (IsFileOrFormatException(e))
                     {
-                        var defaultValue = defaultFactory();
-                        m_currentValue = defaultValue;
-                        await SaveAsync(_ => _, notify: false);
-                        return defaultValue;
+                        if (File.Exists(FullPath))
+                            File.Move(FullPath, $"{FullPath}.{DateTime.UtcNow:yyyyMMdd-HHmmssfffffff}.corrupt");
                     }
+                }
 
-                    using var stream = File.OpenRead(FullPath);
-                    return await ReadAsync(stream);
-                }
-                catch (Exception e) when (IsFileOrFormatException(e))
+                T value = defaultFactory();
+                var backup = FullPath + ".bak";
+                if (File.Exists(backup))
                 {
-                    var defaultValue = defaultFactory();
-                    m_currentValue = defaultValue;
-                    try
-                    {
-                        // Try to preserve the old configuration, if any.
-                        File.Copy(FullPath, $"{FullPath}.{DateTime.UtcNow}.bak");
-                        File.Delete(FullPath);
-                    }
-                    catch
-                    {
-                        // continue
-                    }
-                    await SaveAsync(_ => _, notify: false);
-                    return defaultValue;
+                    try { value = await ReadFileAsync(backup); }
+                    catch (Exception e) when (IsFileOrFormatException(e)) { }
                 }
+                await WriteFileAsync(value);
+                return value;
+            }
+
+            async Task<T> ReadFileAsync(string path)
+            {
+                using var stream = File.OpenRead(path);
+                return await ReadAsync(stream);
             }
 
             var lastValue = Observable.FromAsync(readAsync)
@@ -97,51 +92,40 @@ namespace wintabs.Models
         public virtual async Task SaveAsync(Func<T, T> update)
         {
             await m_initTask;
-            await SaveAsync(update, notify: true);
+            await m_rwLock.WaitAsync();
+            try
+            {
+                var newValue = update(m_currentValue);
+                if (Equals(m_currentValue, newValue))
+                    return;
+
+                await WriteFileAsync(newValue);
+                m_saves.OnNext(newValue);
+            }
+            finally
+            {
+                m_rwLock.Release();
+            }
         }
 
         protected abstract Task<T> ReadAsync(Stream stream);
         protected abstract Task WriteAsync(Stream stream, T value);
 
-        private async Task SaveAsync(Func<T, T> update, bool notify)
+        private async Task WriteFileAsync(T value)
         {
-            if (m_currentValue == null)
-            {
-                throw new InvalidOperationException("Model not initialized.");
-            }
-
-            var newValue = update(m_currentValue);
-
-            if (Equals(m_currentValue, newValue))
-            {
-                return;
-            }
-
-            await m_rwLock.WaitAsync();
+            var tempPath = FullPath + ".tmp";
             try
             {
-                var tempPath = FullPath + ".tmp";
                 using (var stream = File.Create(tempPath))
                 {
-                    await WriteAsync(stream, newValue);
+                    await WriteAsync(stream, value);
+                    stream.Flush(flushToDisk: true);
                 }
 
                 if (File.Exists(FullPath))
-                {
-                    var backupPath = FullPath + ".bak";
-                    if (File.Exists(backupPath))
-                    {
-                        File.Delete(backupPath);
-                    }
-                    File.Move(FullPath, backupPath);
-                }
-
-                File.Move(tempPath, FullPath, overwrite: true);
-
-                if (File.Exists(FullPath + ".bak"))
-                {
-                    File.Delete(FullPath + ".bak");
-                }
+                    File.Replace(tempPath, FullPath, FullPath + ".bak");
+                else
+                    File.Move(tempPath, FullPath);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -153,12 +137,8 @@ namespace wintabs.Models
             }
             finally
             {
-                m_rwLock.Release();
-            }
-
-            if (notify)
-            {
-                m_saves.OnNext(newValue);
+                try { File.Delete(tempPath); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
             }
         }
     }
@@ -169,7 +149,7 @@ namespace wintabs.Models
 
         protected override async Task<T> ReadAsync(Stream stream)
         {
-            var result = await JsonSerializer.DeserializeAsync<T>(stream, Options) ?? throw new InvalidOperationException("Deserialized value is null.");
+            var result = await JsonSerializer.DeserializeAsync<T>(stream, Options) ?? throw new JsonException("Deserialized value is null.");
             return result;
         }
 
@@ -192,7 +172,7 @@ namespace wintabs.Models
 
         protected override async Task<T> ReadAsync(Stream stream)
         {
-            var result = await JsonSerializer.DeserializeAsync<T>(stream, m_readOptions) ?? throw new InvalidOperationException("Deserialized value is null.");
+            var result = await JsonSerializer.DeserializeAsync<T>(stream, m_readOptions) ?? throw new JsonException("Deserialized value is null.");
             return result;
         }
 
@@ -209,6 +189,8 @@ namespace wintabs.Models
             }
             catch (Exception)
             {
+                stream.SetLength(0);
+                stream.Position = 0;
                 newValueStream.Position = 0;
                 await newValueStream.CopyToAsync(stream);
             }

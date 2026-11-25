@@ -13,10 +13,12 @@ namespace wintabs.Utilities
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValue = "wintabs";
 
-        public static Task<bool> IsEnabledAsync()
+        public static Task<bool> IsEnabledAsync() => Task.FromResult(IsEnabled());
+
+        public static bool IsEnabled()
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-            return Task.FromResult(key?.GetValue(RunValue) is string);
+            return key?.GetValue(RunValue) is string;
         }
 
         public static Task<bool> EnableAsync()

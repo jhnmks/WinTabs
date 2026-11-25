@@ -96,19 +96,23 @@ namespace wintabs.ViewModels
         /// <summary>The "Apps that always float" list: <see cref="ProcessIgnoreList"/> with readable names.</summary>
         public IReadOnlyList<AlwaysFloatingApp> AlwaysFloatingApps { get; private set; } = [];
 
-        public void AddAlwaysFloatingApp(string processName)
-        {
-            processName = ByProcessNameMatcher.Normalize(processName);
-            if (processName.Length == 0 || ProcessIgnoreList == null ||
-                ProcessIgnoreList.Any(x => string.Equals(ByProcessNameMatcher.Normalize(x), processName, StringComparison.OrdinalIgnoreCase)))
-                return;
-            ProcessIgnoreList = [.. ProcessIgnoreList, processName];
-        }
+        public void AddAlwaysFloatingApp(string processName) => ChangeFloatingApp(processName, add: true);
 
-        private void RemoveAlwaysFloatingApp(string processName)
+        private void RemoveAlwaysFloatingApp(string processName) => ChangeFloatingApp(processName, add: false);
+
+        private void ChangeFloatingApp(string processName, bool add)
         {
-            if (ProcessIgnoreList != null)
-                ProcessIgnoreList = [.. ProcessIgnoreList.Where(x => x != processName)];
+            var name = ByProcessNameMatcher.Normalize(processName);
+            if (name.Length == 0)
+                return;
+            _ = SaveAsync(settings =>
+            {
+                var apps = settings.ProcessIgnoreList;
+                bool Matches(string entry) => string.Equals(ByProcessNameMatcher.Normalize(entry), name, StringComparison.OrdinalIgnoreCase);
+                if (apps.Any(Matches) == add)
+                    return settings;
+                return settings with { ProcessIgnoreList = add ? [.. apps, name] : [.. apps.Where(x => !Matches(x))] };
+            });
         }
 
         public IList<string>? ClassIgnoreList { get => m_classIgnoreList; set => SetField(ref m_classIgnoreList, value); }
@@ -139,7 +143,7 @@ namespace wintabs.ViewModels
             m_subscription = observable
                 .Subscribe(settings =>
             {
-                dispatcher.Invoke(() =>
+                dispatcher.BeginInvoke(() =>
                 {
                     m_isInit = false;
                     m_logger.Debug($"{nameof(wintabs.ViewModels.SettingsViewModel)} received new Settings");
@@ -155,16 +159,18 @@ namespace wintabs.ViewModels
                     SoundOnFailure = settings.SoundOnFailure;
                     FocusBorderColor = FocusBorderPalette.Find(settings.FocusBorderColor).Name;
 
-                    Autostart.IsEnabledAsync()
-                        .ContinueWith(t =>
-                        {
-                            dispatcher.Invoke(() =>
-                            {
-                                SetField(ref m_runsAtStartup, t.Result, nameof(RunsAtStartup));
-                            });
-
-                            m_isInit = true;
-                        });
+                    try
+                    {
+                        SetField(ref m_runsAtStartup, Autostart.IsEnabled(), nameof(RunsAtStartup));
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException)
+                    {
+                        m_logger.Warning(ex, "Could not read the startup setting");
+                    }
+                    finally
+                    {
+                        m_isInit = true;
+                    }
                 });
             });
 
@@ -179,7 +185,23 @@ namespace wintabs.ViewModels
                 return;
             }
 
-            SaveChanges();
+            Func<Settings, Settings>? update = propertyName switch
+            {
+                nameof(NotifyVirtualDesktopServiceIncompatibility) => Change(NotifyVirtualDesktopServiceIncompatibility, (x, v) => x with { NotifyVirtualDesktopServiceIncompatibility = v }),
+                nameof(Appearance) => Change(Appearance, (x, v) => x with { Appearance = v }),
+                nameof(WindowPadding) => Change(WindowPadding, (x, v) => x with { WindowPadding = v }),
+                nameof(PanelHeight) => Change(PanelHeight, (x, v) => x with { PanelHeight = v }),
+                nameof(PanelFontSize) => Change(PanelFontSize, (x, v) => x with { PanelFontSize = v }),
+                nameof(ClassIgnoreList) => Change(ClassIgnoreList?.ToList() ?? [], (x, v) => x with { ClassIgnoreList = v }),
+                nameof(MultiMonitorSupport) => Change(MultiMonitorSupport, (x, v) => x with { MultiMonitorSupport = v }),
+                nameof(SoundOnFailure) => Change(SoundOnFailure, (x, v) => x with { SoundOnFailure = v }),
+                nameof(FocusBorderColor) => Change(FocusBorderColor, (x, v) => x with { FocusBorderColor = v }),
+                _ => null,
+            };
+            if (update != null)
+                _ = SaveAsync(update);
+
+            static Func<Settings, Settings> Change<T>(T value, Func<Settings, T, Settings> apply) => x => apply(x, value);
         }
 
         public override void Dispose()
@@ -187,26 +209,10 @@ namespace wintabs.ViewModels
             m_subscription?.Dispose();
         }
 
-        private void SaveChanges()
+        private async System.Threading.Tasks.Task SaveAsync(Func<Settings, Settings> update)
         {
-            _ = Model.SaveAsync(x =>
-            {
-                m_logger.Debug($"{nameof(SettingsViewModel)} is overwriting existing Settings");
-
-                return x with
-                {
-                    NotifyVirtualDesktopServiceIncompatibility = NotifyVirtualDesktopServiceIncompatibility,
-                    Appearance = Appearance,
-                    WindowPadding = WindowPadding,
-                    PanelHeight = PanelHeight,
-                    PanelFontSize = PanelFontSize,
-                    ProcessIgnoreList = [.. ProcessIgnoreList!],
-                    ClassIgnoreList = [.. ClassIgnoreList!],
-                    MultiMonitorSupport = MultiMonitorSupport,
-                    SoundOnFailure = SoundOnFailure,
-                    FocusBorderColor = FocusBorderColor,
-                };
-            });
+            try { await Model.SaveAsync(update); }
+            catch (Exception ex) { m_logger.Error(ex, "Could not save settings to {Path}", Model.FullPath); }
         }
     }
 }

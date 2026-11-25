@@ -44,11 +44,81 @@ namespace wintabs.Tests.Models
             var filePath = Path.Combine(m_tempDir, "test.json");
             var entity = new TestObservableJsonEntity(filePath, () => new TestModel { Value = "default" });
 
-            await entity.SaveAsync(TestModel.Next);
+            await entity.Value.FirstAsync();
 
             Assert.IsTrue(File.Exists(filePath));
             var content = File.ReadAllText(filePath);
             Assert.IsTrue(content.Contains("default"));
+        }
+
+        [TestMethod]
+        public async Task ConcurrentSettingsChangesDoNotOverwriteEachOther()
+        {
+            var filePath = Path.Combine(m_tempDir, "settings.json");
+            var entity = new ObservableJsonEntity<wintabs.Models.Settings>(filePath, () => new());
+            await entity.Value.FirstAsync();
+            await Task.WhenAll(
+                entity.SaveAsync(x => x with { ProcessIgnoreList = [.. x.ProcessIgnoreList, "example"] }),
+                entity.SaveAsync(x => x with { Appearance = wintabs.Models.AppearanceMode.Dark }));
+
+            var saved = JsonSerializer.Deserialize<wintabs.Models.Settings>(File.ReadAllText(filePath))!;
+            CollectionAssert.Contains(saved.ProcessIgnoreList, "example");
+            Assert.AreEqual(wintabs.Models.AppearanceMode.Dark, saved.Appearance);
+        }
+
+        [TestMethod]
+        public void SingleInstanceMutexBlocksAnotherLaunchUntilDisposed()
+        {
+            var name = @"Local\WinTabs.Test." + Guid.NewGuid();
+            using (var first = wintabs.Utilities.InstanceShutdown.TryAcquireInstance(name))
+            {
+                Assert.IsNotNull(first);
+                using var duplicate = wintabs.Utilities.InstanceShutdown.TryAcquireInstance(name);
+                Assert.IsNull(duplicate);
+            }
+            using var next = wintabs.Utilities.InstanceShutdown.TryAcquireInstance(name);
+            Assert.IsNotNull(next);
+        }
+
+        [TestMethod]
+        public void UninstallSignalTargetsOnlyTheMatchingExecutablePath()
+        {
+            var installed = Path.Combine(m_tempDir, "installed", "wintabs.exe");
+            var development = Path.Combine(m_tempDir, "dev", "wintabs.exe");
+            using var listener = wintabs.Utilities.InstanceShutdown.CreateSignal(installed);
+            using var other = wintabs.Utilities.InstanceShutdown.CreateSignal(development);
+            using var sender = wintabs.Utilities.InstanceShutdown.CreateSignal(installed.ToUpperInvariant());
+
+            sender.Set();
+            Assert.IsTrue(listener.WaitOne(0));
+            Assert.IsFalse(other.WaitOne(0));
+        }
+
+        [TestMethod]
+        public void LogViewerFindsLatestRollAndIgnoresCrashArchives()
+        {
+            var main = Path.Combine(m_tempDir, "wintabs.log");
+            var roll = Path.Combine(m_tempDir, "wintabs_001.log");
+            var crash = Path.Combine(m_tempDir, "wintabs-crash-archive.log");
+            var now = DateTime.UtcNow;
+            File.WriteAllText(main, "old");
+            File.SetLastWriteTimeUtc(main, now.AddMinutes(-2));
+            File.WriteAllText(roll, "current");
+            File.SetLastWriteTimeUtc(roll, now.AddMinutes(-1));
+            File.WriteAllText(crash, "archive");
+
+            Assert.AreEqual(roll, wintabs.Utilities.LogFileViewer.FindLatest(main));
+        }
+
+        [TestMethod]
+        public async Task MissingSettingsAreRestoredFromBackup()
+        {
+            var filePath = Path.Combine(m_tempDir, "test.json");
+            File.WriteAllText(filePath + ".bak", JsonSerializer.Serialize(new TestModel { Value = "backup" }));
+            var entity = new TestObservableJsonEntity(filePath, () => new TestModel { Value = "default" });
+
+            Assert.AreEqual("backup", (await entity.Value.FirstAsync()).Value);
+            Assert.AreEqual("backup", JsonSerializer.Deserialize<TestModel>(File.ReadAllText(filePath))!.Value);
         }
 
         [TestMethod]

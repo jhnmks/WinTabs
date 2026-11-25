@@ -16,32 +16,50 @@ namespace wintabs.Utilities
 
         private static int s_activationVersion;
 
-        public static async Task<bool> ActivateTabAsync(IntPtr hwnd, Func<bool> canRetry)
+        internal enum ActivationResult { Activated, Superseded, Refused }
+
+        internal static IntPtr ForegroundRoot() => WindowExtensions.GetRootWindow(PInvoke.GetForegroundWindow().Value);
+
+        public static Task<ActivationResult> ActivateTabAsync(IntPtr hwnd, Func<bool> canRetry)
         {
-            var foreground = PInvoke.GetForegroundWindow();
-            if (ForceActivate(hwnd, out int version))
-                return true;
-
-            // SendInput queues the Alt tap. Let Windows process it before retrying, without blocking the UI.
-            await Task.Delay(50);
-            var current = PInvoke.GetForegroundWindow();
-            if (current.Value == hwnd)
-                return true;
-
-            return version == Volatile.Read(ref s_activationVersion) && current.Value == foreground.Value &&
-                canRetry() && PInvoke.SetForegroundWindow(new(hwnd));
+            int version = Interlocked.Increment(ref s_activationVersion);
+            return ActivateTabAsync(hwnd, ForegroundRoot, TryActivate,
+                () => version == Volatile.Read(ref s_activationVersion) && canRetry(), () => Task.Delay(50));
         }
 
-        /// <summary>
-        /// Brings <paramref name="hwnd"/> to the foreground. Runs synchronously on the calling thread so no
-        /// input attachment can outlive the call and block the next activation.
-        /// </summary>
-        public static bool ForceActivate(IntPtr hwnd) => ForceActivate(hwnd, out _);
-
-        private static bool ForceActivate(IntPtr hwnd, out int version)
+        internal static async Task<ActivationResult> ActivateTabAsync(IntPtr hwnd, Func<IntPtr> foreground,
+            Func<IntPtr, bool> activate, Func<bool> stillRequested, Func<Task> wait)
         {
-            version = Interlocked.Increment(ref s_activationVersion);
-            if (PInvoke.GetForegroundWindow().Value == hwnd || PInvoke.SetForegroundWindow(new(hwnd)))
+            var previous = foreground();
+            if (previous == hwnd)
+                return ActivationResult.Activated;
+            // A successful SetForegroundWindow can still be pending on the target's UI thread.
+            activate(hwnd);
+            for (int i = 0; i <= 2; i++)
+            {
+                var current = foreground();
+                if (current == hwnd)
+                    return ActivationResult.Activated;
+                if (!stillRequested() || current != previous && current != IntPtr.Zero)
+                    return ActivationResult.Superseded;
+                if (i == 2)
+                    break;
+                if (i == 1 && current == previous)
+                    activate(hwnd);
+                await wait();
+            }
+            return ActivationResult.Refused;
+        }
+
+        public static bool ForceActivate(IntPtr hwnd)
+        {
+            Interlocked.Increment(ref s_activationVersion);
+            return TryActivate(hwnd);
+        }
+
+        private static bool TryActivate(IntPtr hwnd)
+        {
+            if (ForegroundRoot() == hwnd || PInvoke.SetForegroundWindow(new(hwnd)))
                 return true;
 
             // Windows only lets the process that received the last input change the foreground window.

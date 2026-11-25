@@ -64,8 +64,6 @@ namespace wintabs.Layouts.Tiling
         protected override void AttachCore(int index, TilingNode node)
         {
             m_children.Insert(index, node);
-            if (node is WindowNode)
-                GroupNumbers.Register(this);
         }
 
         protected override void DetachCore(TilingNode node)

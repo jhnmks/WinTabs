@@ -31,11 +31,22 @@ namespace wintabs
 
         private static event Action? ProgramExit;
 
+        private static int s_restartRequested;
+
         private const string LogFile = "wintabs.log";
 
         [STAThread]
         public static int Main(string[] args)
         {
+            if (Environment.ProcessPath is { } executable)
+            {
+                if (args is ["--stop-installed-copy"])
+                    return InstanceShutdown.StopInstalledCopy(executable);
+                if (args is ["--restart-after-exit", var processId, var started] &&
+                    int.TryParse(processId, out int pid) && long.TryParse(started, out long startTime))
+                    return InstanceShutdown.RestartAfterExit(executable, pid, startTime);
+            }
+
             // A GUI app has no console; when started from a terminal with options, print to that terminal.
             if (args.Length != 0)
             {
@@ -80,6 +91,13 @@ SHORTCUTS:
 
         private static int AppMain(string[] args)
         {
+            using var instance = InstanceShutdown.TryAcquireInstance();
+            if (instance == null)
+            {
+                MessageBox.Show("Another instance of WinTabs is already running!", "WinTabs", MessageBoxButton.OK, MessageBoxImage.Error);
+                return 1;
+            }
+
             // Set the working path
             string roamingPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             string fullPath = $"{roamingPath}\\wintabs";
@@ -88,16 +106,6 @@ SHORTCUTS:
                 Directory.CreateDirectory(fullPath);
             }
             Directory.SetCurrentDirectory(fullPath);
-
-            // Check if other instances are running
-            var exists = Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName)
-                .Where(x => x.MainWindowHandle != IntPtr.Zero)
-                .Any();
-            if (exists)
-            {
-                MessageBox.Show("Another instance of WinTabs is already running!", "WinTabs", MessageBoxButton.OK, MessageBoxImage.Error);
-                return 1;
-            }
 
             // Parse command line
             var logLevel = args.Contains("-vv")
@@ -122,13 +130,13 @@ SHORTCUTS:
                 HasConsole = PInvoke.GetConsoleWindow() != IntPtr.Zero,
             });
 
-            ProgramExit += OnProgramExit;
-
             var provider = serviceCollection.BuildServiceProvider();
+            ProgramExit += OnProgramExit;
 
             // Create logger
             var logger = provider.GetRequiredService<ILogger>();
-            logger.Warning(GetFullVersionString());
+            logger.Warning("Starting {Version}; PID={ProcessId}; executable={Executable}; settings directory={Directory}",
+                GetFullVersionString(), Environment.ProcessId, Environment.ProcessPath, fullPath);
 
             ConfigureThreadPriority(logger);
 
@@ -149,7 +157,16 @@ SHORTCUTS:
                 };
                 // Run the app
                 app.InitializeComponent();
-                int exitCode = app.Run();
+                using var shutdownSignal = InstanceShutdown.CreateSignal(Environment.ProcessPath!);
+                var registration = ThreadPool.RegisterWaitForSingleObject(shutdownSignal, (_, _) =>
+                    app.Dispatcher.BeginInvoke(() =>
+                    {
+                        logger.Information("Shutting down for uninstall");
+                        app.Terminate();
+                    }), null, Timeout.Infinite, executeOnlyOnce: true);
+                int exitCode;
+                try { exitCode = app.Run(); }
+                finally { registration.Unregister(null); }
                 exitNormally = true;
                 logger.Information("Exiting normally with exit code={ExitCode}", exitCode);
                 ProgramExit?.Invoke();
@@ -200,18 +217,21 @@ SHORTCUTS:
         {
             if (Application.Current is App app && app.RestartOnClose)
             {
-                var startupCommand = Environment.ProcessPath;
-                if (startupCommand == null)
-                {
+                if (Environment.ProcessPath is not { } executable || Interlocked.Exchange(ref s_restartRequested, 1) != 0)
                     return;
-                }
-                Process.Start(new ProcessStartInfo
+                try
                 {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c timeout 1 && taskkill /f /im wintabs.exe && timeout 1 && {startupCommand}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                });
+                    using var current = Process.GetCurrentProcess();
+                    var start = new ProcessStartInfo(executable) { UseShellExecute = false };
+                    start.ArgumentList.Add("--restart-after-exit");
+                    start.ArgumentList.Add(current.Id.ToString(CultureInfo.InvariantCulture));
+                    start.ArgumentList.Add(current.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture));
+                    using var helper = Process.Start(start);
+                }
+                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    Trace.TraceError("Could not restart WinTabs: {0}", e);
+                }
             }
         }
 
@@ -229,13 +249,13 @@ SHORTCUTS:
             string logFileName = Path.GetFullPath(LogFile);
             try
             {
-                File.WriteAllText(logFileName, "");
+                using var probe = File.Open(logFileName, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
             }
             catch
             {
                 // Fall back to using a temporary file
                 isUsingTempLogFile = true;
-                logFileName = Path.GetTempFileName() + ".log";
+                logFileName = Path.Combine(Path.GetTempPath(), $"wintabs-{Guid.NewGuid():N}.log");
             }
 
             // Create logger configuration
@@ -251,8 +271,9 @@ SHORTCUTS:
                 logFileName,
                 restrictedToMinimumLevel: args.LogLevel,
                 fileSizeLimitBytes: 4 * 1024 * 1024,
-                buffered: true,
-                flushToDiskInterval: TimeSpan.FromSeconds(5));
+                rollOnFileSizeLimit: true,
+                retainedFileCountLimit: 5,
+                buffered: false);
 
             var logBuffer = new CircularBuffer<string>(1000);
             var lineWriter = new LineWriter(logBuffer);
@@ -273,9 +294,20 @@ SHORTCUTS:
                 logger.Dispose();
                 if (!isUsingTempLogFile)
                 {
-                    // Create the file with a placeholder error message indicating more severe failure
-                    var crashFileName = $"wintabs-crash-{DateTimeOffset.Now:yyyyMMddTHHmmss}.log";
-                    File.Copy(logFileName, crashFileName, true);
+                    try
+                    {
+                        var dir = Path.GetDirectoryName(logFileName)!;
+                        var latest = LogFileViewer.FindLatest(logFileName);
+                        if (latest != null)
+                            File.Copy(latest, Path.Combine(dir, $"wintabs-crash-{DateTimeOffset.Now:yyyyMMddTHHmmss}.log"), true);
+                        foreach (var old in Directory.EnumerateFiles(dir, "wintabs-crash-*.log")
+                            .OrderByDescending(File.GetLastWriteTimeUtc).Skip(5))
+                            File.Delete(old);
+                    }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        Trace.TraceWarning("Could not archive WinTabs crash log: {0}", e.Message);
+                    }
                 }
             };
 

@@ -22,7 +22,7 @@ namespace wintabs.Models
             new("Tabs", ["Ctrl", "Shift", "← →"], "Move the tab left or right",
                 "Shifts the active tab one position within its group."),
             new("Tabs", ["Ctrl", "Shift", "1 – 9"], "Send the tab to a numbered group",
-                "Moves the active tab to the end of the group with that number, shown on its tab or badge, including nested groups and Ungrouped."),
+                "Sends the active tab to the group with that badge number. If a tab remains in the source row, focus stays there."),
             new("Tab groups", ["Ctrl", "Win", "← →"], "Previous or next group",
                 "Switches groups in the outer row, including Ungrouped. Wraps around at the ends."),
             new("Tab groups", ["Ctrl", "Win", "G"], "Put the active tab in a new group",

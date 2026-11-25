@@ -58,6 +58,7 @@ namespace wintabs.Layouts.Tiling
                 Desktop.Unregister(windowNode);
             }
 
+            GroupNumbers.Publish(Desktop);
             return originalNode;
         }
 
@@ -90,6 +91,8 @@ namespace wintabs.Layouts.Tiling
             }
             node.Parent = this;
             AttachCore(index, node);
+            if (Desktop is { } tree)
+                GroupNumbers.Publish(tree);
         }
 
         public void Detach(TilingNode node)
@@ -104,6 +107,8 @@ namespace wintabs.Layouts.Tiling
             }
             node.Parent = null;
             DetachCore(node);
+            if (Desktop is { } tree)
+                GroupNumbers.Publish(tree);
         }
 
         protected abstract void AttachCore(int index, TilingNode node);
@@ -115,10 +120,13 @@ namespace wintabs.Layouts.Tiling
         {
             if (Children.Count == 1 && Parent != null)
             {
+                var tree = Desktop;
                 int index = Parent!.IndexOf(this);
                 Parent.SetReference(index, Children[0]);
                 Children[0].Parent = Parent;
                 Parent = null;
+                if (tree != null)
+                    GroupNumbers.Publish(tree);
             }
         }
     }

@@ -236,19 +236,13 @@ namespace wintabs
             group.Attach(group.Children.TakeWhile(x => x is StackPanelNode).Count(), container);
 
         /// <summary>Puts a tab into an existing container, at the end of its row.</summary>
-        public bool MoveTabToContainer(WindowNode tab, StackPanelNode container)
+        public bool MoveTabToContainer(WindowNode tab, StackPanelNode container, bool keepSourceFocus = false)
         {
             if (!container.IsContainer || tab.Parent == container || tab.Desktop == null || tab.Desktop != container.Desktop)
                 return false;
             if (!CanAcceptTab(tab, container, null))
                 return false;
-            var oldGroup = GetGroup(tab)!;
-            DetachTab(tab);
-            container.Attach(tab);
-            if (oldGroup.Children.Count == 0)
-                RemoveEmptyGroup(oldGroup);
-            SetFocus(tab);
-            return true;
+            return MoveTabToGroup(tab, container, keepSourceFocus);
         }
 
         /// <summary>Unpacks the tabs in order before the other regular window tabs.</summary>
@@ -475,16 +469,19 @@ namespace wintabs
             (target.Edge is TilingDirection edge ? SplitTabBeside(tab, target.Group, edge)
                 : target.Group.IsContainer ? MoveTabToContainer(tab, target.Group) : MoveTabToGroup(tab, target.Group));
 
-        public bool MoveTabToGroup(WindowNode tab, StackPanelNode target)
+        public bool MoveTabToGroup(WindowNode tab, StackPanelNode target, bool keepSourceFocus = false)
         {
             if (GetGroup(tab) is not StackPanelNode source || tab.Parent == target || tab.Desktop == null || tab.Desktop != target.Desktop)
                 return false;
 
+            var focused = m_states.GetState(tab.Desktop)?.FocusedNode;
+            var replacement = keepSourceFocus && focused == tab ? GetSourceNeighbor(tab) : null;
             DetachTab(tab);
             target.Attach(tab);
             if (source.Children.Count == 0)
                 RemoveEmptyGroup(source);
-            SetFocus(tab);
+            if (!keepSourceFocus || focused == tab)
+                SetFocus(replacement ?? tab);
             return true;
         }
 
@@ -503,13 +500,13 @@ namespace wintabs
             if (target == source)
             {
                 int index = source.IndexOf(tab);
-                if (index == source.Children.Count - 1)
-                    return false;
-                source.Move(index, source.Children.Count - 1);
+                if (index < source.Children.Count - 1)
+                    source.Move(index, source.Children.Count - 1);
                 return true;
             }
 
-            return target.IsContainer ? MoveTabToContainer(tab, target) : MoveTabToGroup(tab, target);
+            return target.IsContainer ? MoveTabToContainer(tab, target, keepSourceFocus: true)
+                : MoveTabToGroup(tab, target, keepSourceFocus: true);
         }
 
         public StackPanelNode? FindGroup(IVirtualDesktop desktop, int groupNumber) =>
@@ -519,13 +516,22 @@ namespace wintabs
         /// Moves the focused tab to the end of a group owned by another workspace (another display).
         /// </summary>
         public WindowNode? TransferFocusedTab(IVirtualDesktop desktop, TilingWorkspace destination, StackPanelNode target) =>
-            GetFocus(desktop) is WindowNode tab ? TransferTab(tab, destination, target, null, desktop) : null;
+            GetFocus(desktop) is WindowNode tab ? TransferTab(tab, destination, target, null, desktop, keepSourceFocus: true) : null;
+
+        private static WindowNode? GetSourceNeighbor(WindowNode tab)
+        {
+            var row = (StackPanelNode)tab.Parent!;
+            int index = row.IndexOf(tab);
+            // Only windows in this row count; a named group in the outer row is not a window tab.
+            return row.Children.Take(index).OfType<WindowNode>().LastOrDefault()
+                ?? row.Children.Skip(index + 1).OfType<WindowNode>().FirstOrDefault();
+        }
 
         /// <summary>
         /// Moves a tab to a workspace of another display: into <paramref name="target"/>, into a new group beside it
         /// (with an edge), or, without a target, into the empty display. Never loses the tab when that fails.
         /// </summary>
-        public WindowNode? TransferTab(WindowNode tab, TilingWorkspace destination, StackPanelNode? target, TilingDirection? edge, IVirtualDesktop desktop)
+        public WindowNode? TransferTab(WindowNode tab, TilingWorkspace destination, StackPanelNode? target, TilingDirection? edge, IVirtualDesktop desktop, bool keepSourceFocus = false)
         {
             var tree = destination.GetTree(desktop);
             if (tab.Parent is not StackPanelNode || tab.Desktop == null || tab.Desktop != GetTree(desktop) || tree?.Root is not PanelNode root || tree == tab.Desktop)
@@ -544,10 +550,14 @@ namespace wintabs
                 group = new StackPanelNode { Padding = target.Padding, Spacing = target.Spacing };
                 InsertGroup(target, group, direction);
             }
+            var replacement = keepSourceFocus ? GetSourceNeighbor(tab) : null;
             UnregisterWindow(window);
             group.Attach(tab);
             destination.m_originalPositions[window] = original;
-            destination.SetFocus(tab);
+            if (replacement != null)
+                SetFocus(replacement);
+            else
+                destination.SetFocus(tab);
             return tab;
         }
 
