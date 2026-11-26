@@ -113,12 +113,6 @@ SHORTCUTS:
                 : args.Contains("-v")
                 ? LogEventLevel.Debug
                 : LogEventLevel.Information;
-#if DEBUG
-            if (logLevel > LogEventLevel.Debug)
-            {
-                logLevel = LogEventLevel.Debug;
-            }
-#endif
 
             // Create logger configuration
             var logConfig = new LoggerConfiguration();
@@ -259,7 +253,8 @@ SHORTCUTS:
             }
 
             // Create logger configuration
-            var logConfig = new LoggerConfiguration();
+            // Serilog drops everything below Information unless the logger itself allows it, whatever the sinks say.
+            var logConfig = new LoggerConfiguration().MinimumLevel.Is(args.LogLevel);
 #if DEBUG
             if (Debugger.IsAttached)
             {

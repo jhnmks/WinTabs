@@ -493,6 +493,7 @@ namespace wintabs
 
         private void OnOverlayPanelItemClick(TilingNodeViewModel viewModel)
         {
+            App.Current.Logger.Debug("Tab click on {Node}", viewModel.Node is WindowNode tab ? tab.WindowReference.DebugString() : viewModel.Node?.GetType().Name);
             TilingNodeFocusRequested?.Invoke(this, viewModel.Node!);
         }
 

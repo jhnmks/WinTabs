@@ -28,6 +28,16 @@ namespace wintabs.Windows
         [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
         private static extern IntPtr SetWindowLong32(IntPtr hWnd, GetWindowLongPtr_nIndex nIndex, IntPtr dwNewLong);
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ScreenPoint
+        {
+            public int X, Y;
+        }
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern IntPtr WindowFromPoint(ScreenPoint point);
+
         private static IntPtr SetWindowLongPtr(IntPtr hWnd, GetWindowLongPtr_nIndex nIndex, IntPtr dwNewLong)
         {
             if (IntPtr.Size == 8)
@@ -291,6 +301,9 @@ namespace wintabs.Windows
 
         private void OnMouseButtonStateChanged(object? sender, ref LowLevelMouseHook.ButtonStateChangedEventArgs e)
         {
+            if (e.Button == LowLevelMouseHook.MouseButton.Left && e.IsPressed && m_isShown)
+                LogTabBarPress(new WinMan.Point(e.X, e.Y));
+
             if (e.Button == LowLevelMouseHook.MouseButton.Left && !e.IsPressed)
             {
                 var point = new WinMan.Point(e.X, e.Y);
@@ -308,6 +321,35 @@ namespace wintabs.Windows
                 }, System.Windows.Threading.DispatcherPriority.Input);
             }
             DispatchUpdatePositions();
+        }
+
+        /// <summary>
+        /// Diagnostics for presses on the tab bar: whether Windows routes the press to the overlay and whether the
+        /// overlay was accepting input at that moment. A disabled overlay drops the press instead of passing it on.
+        /// </summary>
+        private void LogTabBarPress(WinMan.Point screenPoint)
+        {
+            // Captured on the hook thread, before Windows delivers the press.
+            var under = WindowFromPoint(new ScreenPoint { X = screenPoint.X, Y = screenPoint.Y });
+            bool enabled = (PInvoke.GetWindowLong(new(m_hwnd), GetWindowLongPtr_nIndex.GWL_STYLE) & (int)WINDOWS_STYLE.WS_DISABLED) == 0;
+            var foreground = FocusHelper.DescribeForeground();
+            Dispatcher.BeginInvoke(() =>
+            {
+                bool onTabBar;
+                try
+                {
+                    onTabBar = VisualTreeHelper.HitTest(m_window, m_window.PointFromScreen(new(screenPoint.X, screenPoint.Y))) != null;
+                }
+                catch (InvalidOperationException)
+                {
+                    return;
+                }
+                if (!onTabBar)
+                    return;
+                string target = under == m_hwnd ? "overlay" : under == m_nonHitTestableHwnd ? "click-through overlay" : $"{under:X} (not the overlay)";
+                App.Current.Logger.Debug("Tab bar press goes to {Target}; overlay enabled at press: {Enabled}; {Foreground}",
+                    target, enabled, foreground);
+            }, System.Windows.Threading.DispatcherPriority.Input);
         }
 
         private void DispatchUpdatePositions()

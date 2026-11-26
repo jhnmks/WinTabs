@@ -1333,6 +1333,7 @@ namespace wintabs
                             ReferenceEquals(m_backend.GetFocus(desktop), windowNode);
                     }
                 });
+                m_logger.Debug("Activating {Window}: {Result}; {Foreground}", window.DebugString(), result, FocusHelper.DescribeForeground());
                 if (result == FocusHelper.ActivationResult.Refused)
                 {
                     m_lastShortcutFocus = -ShortcutFocusGraceMs;
