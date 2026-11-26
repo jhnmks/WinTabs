@@ -21,10 +21,25 @@ namespace wintabs.Utilities
         private static readonly ConditionalWeakTable<IWindow, string> m_appNames = [];
 
         private const uint GA_ROOT = 2;
+        private const uint GW_OWNER = 4;
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_APPWINDOW = 0x00040000;
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
         /// <summary>
         /// False once the window has been re-parented into another window (for example a
@@ -33,6 +48,22 @@ namespace wintabs.Utilities
         public static bool IsTopLevelWindow(this IWindow window) => GetRootWindow(window.Handle) == window.Handle;
 
         internal static IntPtr GetRootWindow(IntPtr hwnd) => hwnd == IntPtr.Zero ? hwnd : GetAncestor(hwnd, GA_ROOT);
+
+        /// <summary>
+        /// True for dialogs and other secondary windows that belong to a visible window, such as a viewer's
+        /// options dialog. Windows keeps them above their owner, so as tabs they would hide their owner's tab.
+        /// Like the taskbar, an explicit WS_EX_APPWINDOW still counts as a main window, and an owner that is
+        /// never shown (used by some frameworks for every main window) does not count. An owner embedded in
+        /// another app counts through that app's window, even while the embedded owner itself is hidden.
+        /// </summary>
+        public static bool IsOwnedByVisibleWindow(this IWindow window)
+        {
+            var owner = GetWindow(window.Handle, GW_OWNER);
+            return owner != IntPtr.Zero && IsWindowVisible(GetRootWindow(owner)) &&
+                (GetWindowLong(window.Handle, GWL_EXSTYLE) & WS_EX_APPWINDOW) == 0;
+        }
+
+        internal static bool IsVisible(IntPtr hwnd) => IsWindowVisible(hwnd);
 
         public static string GetCachedProcessName(this IWindow window)
         {

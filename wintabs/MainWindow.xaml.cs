@@ -132,7 +132,16 @@ namespace wintabs
                 .Select(_ => Unit.Default);
 
             m_llkbdHook = App.Current.Services.GetRequiredService<LowLevelKeyboardHook>();
-            m_shortcuts = new TabShortcuts(m_llkbdHook, command => Dispatcher.BeginInvoke(() => OnShortcut(command)));
+            m_shortcuts = new TabShortcuts(m_llkbdHook, command =>
+            {
+                // Captured on the hook thread, before activation changes the foreground.
+                var target = FocusHelper.DescribeForeground();
+                Dispatcher.BeginInvoke(() =>
+                {
+                    m_logger.Debug("Shortcut {Shortcut} {Direction} received; {Target}", command.Shortcut, command.Direction, target);
+                    OnShortcut(command);
+                });
+            });
 
             m_subscriptions =
             [
@@ -315,7 +324,7 @@ namespace wintabs
                 TabShortcut.CheatSheet => "show the shortcuts",
                 _ => "move the tab",
             };
-            m_logger.Debug("Shortcut {Command}", command);
+
             int offset = command.Direction is TilingDirection.Left or TilingDirection.Up ? -1 : 1;
             try
             {

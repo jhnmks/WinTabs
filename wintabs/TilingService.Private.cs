@@ -906,7 +906,7 @@ namespace wintabs
         {
             // Right after a shortcut activates a tab, Windows may still report the previous foreground window.
             // Trust our own choice for a moment so back-to-back shortcuts build on each other.
-            if (Environment.TickCount64 - m_lastShortcutFocus < ShortcutFocusGraceMs)
+            if (RecentShortcutFocus != null)
                 return;
             if (m_workspace.FocusedWindow is IWindow foreground && m_backend.HasWindow(foreground))
                 m_backend.SetFocus(foreground);
@@ -914,12 +914,24 @@ namespace wintabs
 
         private const long ShortcutFocusGraceMs = 400;
         private long m_lastShortcutFocus;
+        private IntPtr m_shortcutFocusFrom;
+        private IntPtr m_shortcutFocusTarget;
 
         /// <summary>
         /// When this display last took focus through a shortcut, if that is recent enough to still be in effect.
+        /// It stops counting as soon as the foreground moves somewhere else (the user clicked or Alt+Tabbed away).
         /// </summary>
-        internal long? RecentShortcutFocus =>
-            Environment.TickCount64 - m_lastShortcutFocus < ShortcutFocusGraceMs ? m_lastShortcutFocus : null;
+        internal long? RecentShortcutFocus
+        {
+            get
+            {
+                if (Environment.TickCount64 - m_lastShortcutFocus >= ShortcutFocusGraceMs)
+                    return null;
+                var foreground = FocusHelper.ForegroundRoot();
+                return foreground == IntPtr.Zero || foreground == m_shortcutFocusFrom || foreground == m_shortcutFocusTarget
+                    ? m_lastShortcutFocus : null;
+            }
+        }
 
         /// <summary>
         /// Records that WinTabs itself just moved focus to <paramref name="tab"/>. Call with the backend lock held.
@@ -927,6 +939,8 @@ namespace wintabs
         private void SetShortcutFocus(WindowNode tab)
         {
             m_backend.SetFocus(tab);
+            m_shortcutFocusFrom = FocusHelper.ForegroundRoot();
+            m_shortcutFocusTarget = tab.WindowReference.Handle;
             m_lastShortcutFocus = Environment.TickCount64;
         }
 
@@ -1480,6 +1494,12 @@ namespace wintabs
             // Live check: hosts such as mRemoteNG adopt another process's window into their own
             // right after it is created. Once embedded it is no longer a top-level window.
             if (!x.IsTopLevelWindow())
+            {
+                return false;
+            }
+
+            // Dialogs stay with the window that owns them instead of getting a tab of their own.
+            if (x.IsOwnedByVisibleWindow())
             {
                 return false;
             }

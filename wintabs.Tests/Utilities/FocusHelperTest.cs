@@ -42,6 +42,22 @@ namespace wintabs.Tests.Utilities
         }
 
         [TestMethod]
+        public async Task UnusableForegroundIsActivatedInsteadOfTreatedAsDone()
+        {
+            // A hidden embedded window holding the foreground is reported as no usable foreground at all.
+            IntPtr current = IntPtr.Zero, target = new(2);
+            int attempts = 0;
+            var result = await FocusHelper.ActivateTabAsync(target, () => current, hwnd =>
+            {
+                attempts++;
+                current = hwnd;
+                return true;
+            }, () => true, () => Task.CompletedTask);
+            Assert.AreEqual(FocusHelper.ActivationResult.Activated, result);
+            Assert.AreEqual(1, attempts);
+        }
+
+        [TestMethod]
         public async Task PersistentRefusalStopsAfterOneRetry()
         {
             int attempts = 0;
